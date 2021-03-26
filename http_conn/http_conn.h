@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <errno.h>
 class http_conn
 {
 public:
@@ -80,6 +81,9 @@ public:
     void process();
     /*读取缓冲区*/
     REQUEST_RESULT process_read();
+    /*工作线程每次执行process之前，都要执行read_once，
+    即读取缓冲区内的数据*/
+    bool read_once();
 };
 
 

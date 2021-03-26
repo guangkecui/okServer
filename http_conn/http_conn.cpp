@@ -36,15 +36,6 @@ void modfd(int epollfd,int fd,int old_option){
 int http_conn::m_epollfd = -1;//静态变量初始化，
 int http_conn::m_user_count = 0;//静态变量初始化，
 
-void http_conn::process(){
-    REQUEST_RESULT result = process_read();
-
-}
-
-http_conn::REQUEST_RESULT http_conn::process_read(){
-    
-}
-
 void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_sockfd = sockfd;
     m_address = addr;
@@ -59,4 +50,39 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
 
     memset(m_read_buff,'/0',READ_BUFFER_SIZE);
     memset(m_write_buff,'/0',WRITE_BUFFER_SIZE);
+}
+
+void http_conn::process(){
+    REQUEST_RESULT result = process_read();
+    if(result == NO_REQUEST){
+        modfd(m_epollfd,m_sockfd,EPOLLIN);
+        return;
+    }
+
+}
+
+http_conn::REQUEST_RESULT http_conn::process_read(){
+    
+}
+
+bool http_conn::read_once(){
+    if(m_read_index >= READ_BUFFER_SIZE){
+        return false;
+    }
+    int read_bytes = 0;
+    /*循环读取，直到缓冲区内没有数据*/
+    while(true){
+        read_bytes = recv(m_sockfd,m_read_buff+m_read_index,READ_BUFFER_SIZE-m_read_index,0);
+        if(read_bytes == -1 ){
+            if(errno == EAGAIN || errno == EWOULDBLOCK){
+                break;
+            }
+            return false;
+        }
+        if(read_bytes == 0){
+            return false;
+        }
+        m_read_index += read_bytes;
+    }
+    return true;
 }
