@@ -1,6 +1,17 @@
 #ifndef HTTP_CONN_H_
 #define HTTP_CONN_H_
-
+#include <unistd.h>
+#include <netinet/in.h>//包含sockaddr_in
+#include <string.h> //包含memset
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
 class http_conn
 {
 public:
@@ -46,8 +57,29 @@ public:
         SLAVE_STATE_LINEBAD
     };
 public:
+    static int m_epollfd;
+    static int m_user_count;
+
+private:
+    int m_sockfd;//套接字
+    sockaddr_in m_address;
+    char m_read_buff[READ_BUFFER_SIZE];//读缓冲
+    char m_write_buff[WRITE_BUFFER_SIZE];//写缓冲
+    int m_startline_index;//报文中每一行的开始在read_buff中的位置
+    int m_check_index;//从状态机正在检查的字节在read_buff中的位置
+    int m_read_index;
+
+    MASTER_STATE m_curstate_master;//主状态机器当前的状态
+
+
+public:
     http_conn(){}
     ~http_conn(){}
+    void init(int sockfd,const sockaddr_in& addr);
+    /*工作线程的工作函数*/
+    void process();
+    /*读取缓冲区*/
+    REQUEST_RESULT process_read();
 };
 
 

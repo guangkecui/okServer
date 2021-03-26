@@ -56,6 +56,7 @@ threadpool<T>::threadpool(int thread_number,int max_requests):
             delete[] m_threads;
             throw std::exception();
         }
+        //将线程设置成分离模式
         if(pthread_detach(m_threads[i])!=0){
             delete[] m_threads;
             throw std::exception();
