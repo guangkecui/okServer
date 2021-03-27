@@ -78,6 +78,8 @@ private:
     REQUEST_METHOD m_method;//请求方法
     char *m_version;//http版本号
 
+    int m_content_length;//请求体的长度，GET方法为0，POST不为0
+
 public:
     http_conn(){}
     ~http_conn(){}

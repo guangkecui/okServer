@@ -107,6 +107,16 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
+    if(text[0] == '\0'){ //处于请求头和请求体之间的空行，已被parse_line改成“\0\0”;
+        m_master_state = MASTER_STATE_BODY;
+        if(m_content_length!=0){
+            text += 2;
+            return NO_REQUEST;//此请求为一个POST请求，请求未完成
+        }
+        else{
+            return GET_REQUEST;//获得一个完整的GET请求
+        }
+    }
     
 }
 
