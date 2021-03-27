@@ -1,5 +1,7 @@
 #include "http_conn.h"
-
+#include <iostream>
+using std::cout;
+using std::endl;
 /*将文件描述符设置成非堵塞*/
 void setnoblock(int fd){
     int old_option = fcntl(fd,F_GETFL);
@@ -42,11 +44,13 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_check_index = 0;
     m_startline_index = 0;
     m_read_index = 0;
-    
-    addfd(m_epollfd,sockfd);
+    m_master_state = 0;
+    addfd(m_epollfd, sockfd);
     m_user_count++;
-
-    m_curstate_master = http_conn::MASTER_STATE_REQUESTLINE;//初始化时主状态机便在请求行上。
+    m_url = nullptr;
+    m_method = GET;
+    m_version = nullptr;
+    m_curstate_master = http_conn::MASTER_STATE_REQUESTLINE; //初始化时主状态机便在请求行上。
 
     memset(m_read_buff,'/0',READ_BUFFER_SIZE);
     memset(m_write_buff,'/0',WRITE_BUFFER_SIZE);
@@ -58,11 +62,109 @@ void http_conn::process(){
         modfd(m_epollfd,m_sockfd,EPOLLIN);
         return;
     }
-
 }
 
-http_conn::REQUEST_RESULT http_conn::process_read(){
+http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
+    m_url = strpbrk(text, "\t"); //在text中找到第一个空格的位置
+    if(!m_url){
+        return BAD_REQUEST;
+    }
+    *m_url++ = '\0';//加入结束符
+
+    char *method = text;//text指向GET或POST
+    if(strcasecmp(method,"GET") == 0){
+        m_method = GET;
+    }
+    else if(strcasecmp(method,"POST") == 0){
+        m_method = POST;
+    }
+    else{
+        return BAD_REQUEST;
+    }
+
+    m_url += strspn(m_url, "\t"); //将url移动到第一个不是‘\t’的地方;
+    m_version = strpbrk(m_url, "\t");//找到下一个空格的位置
+    if(!m_version){
+        return BAD_REQUEST;
+    }
+    *m_version++ = '\0';
+    m_version += strspn(m_version, "\t");//将mervison移动到不是\t的位置
+
+    if(strcasecmp(m_version,"HTTP/1.1")!=0){
+        return BAD_REQUEST;
+    }
+
+    if(strncasecmp(m_url,"http://",7)){
+        //去掉http：//
+        m_url += 7;
+        m_url = strchr(m_url, '/'); //将url指向第一次出现‘/’的地方;
+    }
+    if(!m_url||m_url[0]!='/'){
+        return BAD_REQUEST;
+    }
+    m_master_state = MASTER_STATE_HEADER;
+    return NO_REQUEST;
+}
+
+http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
     
+}
+
+http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
+    
+}
+
+http_conn::REQUEST_RESULT http_conn::do_request(){
+    
+}
+
+/*主状态机工作函数*/
+http_conn::REQUEST_RESULT http_conn::process_read(){
+    REQUEST_RESULT ret = NO_REQUEST;
+    SLAVE_STATE line_state = SLAVE_STATE_LINEOK;
+    char* text = nullptr;
+    while ((m_master_state == MASTER_STATE_BODY)&&(line_state == SLAVE_STATE_LINEOK)||
+            (line_state = slave_parse_line())==SLAVE_STATE_LINEOK)
+    {
+        text = m_read_buff + m_startline_index;
+        m_startline_index = m_check_index;
+        std::cout << "http got 1 http line:" << text << std::endl;
+        switch (m_master_state)
+        {
+        case MASTER_STATE_REQUESTLINE:
+            {
+                ret = master_parse_line(text);
+                if(ret == BAD_REQUEST){
+                    return BAD_REQUEST;
+                }
+                break;
+            }
+        case MASTER_STATE_HEADER:
+            {   
+                ret = master_parse_header(text);
+                if(ret == BAD_REQUEST){
+                    return BAD_REQUEST;
+                }
+                else if(ret == GET_REQUEST){
+                    return do_request();
+                }
+                break;
+            }
+        case MASTER_STATE_BODY:
+            {   
+                ret = master_parse_body(text);
+                if(ret==GET_REQUEST){
+                    return do_request();
+                }
+                line_state = SLAVE_STATE_LINEOPEN;
+                break;
+            }
+        default:
+            {
+                return INTERNAL_ERROR;//返回服务器内部错误
+            }
+        }
+    }
 }
 
 bool http_conn::read_once(){
@@ -86,3 +188,44 @@ bool http_conn::read_once(){
     }
     return true;
 }
+
+/*从状态机解析一行*/
+http_conn::SLAVE_STATE http_conn::slave_parse_line(){
+    char detect_char;
+    for(; m_check_index < m_read_index; ++m_check_index){
+        detect_char = m_read_buff[m_check_index];//获得要检测的字符
+        if(detect_char == '\r'){
+            if((m_check_index+1)==m_read_index){
+                return SLAVE_STATE_LINEOPEN;
+            }
+            if(m_read_buff[m_check_index+1] == '\n'){
+                m_read_buff[m_check_index++] = '\0';
+                m_read_buff[m_check_index++] = '\0';
+                return SLAVE_STATE_LINEOK;
+            }
+            return SLAVE_STATE_LINEBAD;
+        }
+        else if(detect_char == '\n'){
+            if(m_check_index>0 && m_read_buff[m_check_index-1] == '\r'){
+                m_read_buff[m_check_index-1] = '\0';
+                m_read_buff[m_check_index++] = '\0';
+                return SLAVE_STATE_LINEOK;
+            }
+            return SLAVE_STATE_LINEBAD;
+        }
+    }
+    return SLAVE_STATE_LINEOPEN;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
