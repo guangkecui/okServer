@@ -2,6 +2,9 @@
 #include <iostream>
 using std::cout;
 using std::endl;
+
+int http_conn::m_epollfd = -1;//静态变量初始化，
+int http_conn::m_user_count = 0;//静态变量初始化，
 /*将文件描述符设置成非堵塞*/
 void setnoblock(int fd){
     int old_option = fcntl(fd,F_GETFL);
@@ -10,13 +13,16 @@ void setnoblock(int fd){
 }
 
 /*向epollfd中添加监听的socket*/
-void addfd(int epollfd,int fd){
+void addfd(int epollfd,int fd,int isShot = false){
     epoll_event event;
     event.data.fd = fd;
     //EPOLLIN:有新联接或有数据到来，EPOLLRDHUP:对方是否关闭
     //EPOLLONESHOT:信号到达之后，除非重新调用eppol_ctl，否则不会再次唤醒线程，
     //保证一个socket被一个线程处理
-    event.events |= EPOLLIN | EPOLLRDHUP | EPOLLONESHOT;
+    event.events |= EPOLLIN | EPOLLRDHUP ;
+    if(isShot){
+        event.events |= EPOLLONESHOT;
+    }
     epoll_ctl(epollfd,EPOLL_CTL_ADD,fd,&event);
     setnoblock(fd);
 }
@@ -34,10 +40,6 @@ void modfd(int epollfd,int fd,int old_option){
     event.events = old_option | EPOLLONESHOT | EPOLLRDHUP;
     epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&event);
 }
-
-int http_conn::m_epollfd = -1;//静态变量初始化，
-int http_conn::m_user_count = 0;//静态变量初始化，
-
 void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_sockfd = sockfd;
     m_address = addr;

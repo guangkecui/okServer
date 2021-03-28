@@ -2,8 +2,9 @@
 #define SERVER_H_
 #include "./http_conn/http_conn.h"
 #include "./threadpool/threadpool.h"
-
-const int MAX_FD = 65535;//最大文件描述符
+#define READ_EVENT 0;
+#define WRITE_EVENT 1;
+const int MAX_FD = 65535;           //最大文件描述符
 const int MAX_EVENT_NUMBER = 10000; //最大事件数;
 
 class server
@@ -14,12 +15,15 @@ private:
     http_conn *users;//任务数组
     threadpool<http_conn> *m_threadpool; //线程池
     int m_listenfd;//监听的socket描述符
+    int m_thread_number;//线程池中线程个数
 
 public:
     server();
     ~server();
+    void init(int port, int threadnum);
+    void threadpool_init(int threadnum, int max_request_number);
+    void start_listen();
+    void event_loop();
 };
-
-
 
 #endif
