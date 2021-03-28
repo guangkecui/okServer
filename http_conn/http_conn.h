@@ -77,8 +77,11 @@ private:
     char *m_url; //url
     REQUEST_METHOD m_method;//请求方法
     char *m_version;//http版本号
-
+    /*请求头信息*/
     int m_content_length;//请求体的长度，GET方法为0，POST不为0
+    int m_keep_alive;//是否保持连结
+    char *m_host;//主机地址
+    char *m_sting;//存储请求体数据
 
 public:
     http_conn(){}

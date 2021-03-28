@@ -46,13 +46,18 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_read_index = 0;
     m_master_state = 0;
     addfd(m_epollfd, sockfd);
+    m_curstate_master = http_conn::MASTER_STATE_REQUESTLINE; //初始化时主状态机便在请求行上。
     m_user_count++;
+
     m_url = nullptr;
     m_method = GET;
     m_version = nullptr;
-    m_curstate_master = http_conn::MASTER_STATE_REQUESTLINE; //初始化时主状态机便在请求行上。
-
-    memset(m_read_buff,'/0',READ_BUFFER_SIZE);
+    
+    m_content_length = 0;
+    m_host = nullptr;
+    m_keep_alive = false;
+    m_string = nullptr;
+    memset(m_read_buff, '/0', READ_BUFFER_SIZE);
     memset(m_write_buff,'/0',WRITE_BUFFER_SIZE);
 }
 
@@ -65,7 +70,7 @@ void http_conn::process(){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
-    m_url = strpbrk(text, "\t"); //在text中找到第一个空格的位置
+    m_url = strpbrk(text, " \t"); //在text中找到第一个空格的位置
     if(!m_url){
         return BAD_REQUEST;
     }
@@ -82,13 +87,13 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
         return BAD_REQUEST;
     }
 
-    m_url += strspn(m_url, "\t"); //将url移动到第一个不是‘\t’的地方;
-    m_version = strpbrk(m_url, "\t");//找到下一个空格的位置
+    m_url += strspn(m_url, " \t"); //将url移动到第一个不是‘\t’的地方;
+    m_version = strpbrk(m_url, " \t");//找到下一个空格的位置
     if(!m_version){
         return BAD_REQUEST;
     }
     *m_version++ = '\0';
-    m_version += strspn(m_version, "\t");//将mervison移动到不是\t的位置
+    m_version += strspn(m_version, " \t");//将mervison移动到不是\t的位置
 
     if(strcasecmp(m_version,"HTTP/1.1")!=0){
         return BAD_REQUEST;
@@ -107,21 +112,50 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
-    if(text[0] == '\0'){ //处于请求头和请求体之间的空行，已被parse_line改成“\0\0”;
-        m_master_state = MASTER_STATE_BODY;
+    /*处于请求头和请求体之间的空行，已被parse_line改成“\0\0”*/
+    if(text[0] == '\0'){ 
         if(m_content_length!=0){
-            text += 2;
+            m_master_state = MASTER_STATE_BODY;
             return NO_REQUEST;//此请求为一个POST请求，请求未完成
         }
         else{
             return GET_REQUEST;//获得一个完整的GET请求
         }
     }
-    
+    /*处理Connection字段*/
+    else if(strncasecmp(text,"Connection:",11)==0){
+        text += 11;
+        text += strspn(text, " \t");
+        if(strcasecmp(text,"keep-alive")==0){
+            m_keep_alive = true;
+        }
+    }
+    /*处理content-length*/
+    else if(strncasecmp(text,"Content-Length:",15)){
+        text += 15;
+        text += strspn(text, " \t");
+        m_content_length = atoi(text);
+    }
+    /*处理HOST*/
+    else if(strncasecmp(text,"Host:",4)){
+        text += 5;
+        text += strspn(text, " \t");
+        m_host = text;
+    }
+    /*其余暂时不处理*/
+    else{
+        std::cout << "unknow header:" << text << std::endl;
+    }
+    return NO_REQUEST;
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
-    
+    if((m_check_index+m_content_length)<=m_read_index){//请求体被完整读入
+        text[m_content_length] = '\0';
+        m_string = text;
+        return GET_REQUEST;
+    }
+    return NO_REQUEST;
 }
 
 http_conn::REQUEST_RESULT http_conn::do_request(){
