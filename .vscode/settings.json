@@ -5,6 +5,8 @@
         "*.tcc": "cpp",
         "fstream": "cpp",
         "istream": "cpp",
-        "sstream": "cpp"
+        "sstream": "cpp",
+        "new": "cpp",
+        "functional": "cpp"
     }
 }

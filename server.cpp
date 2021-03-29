@@ -3,60 +3,37 @@
 using std::cout;
 using std::endl;
 
-/*将文件描述符设置成非堵塞*/
-void setnoblock(int fd){
-    int old_option = fcntl(fd,F_GETFL);
-    int new_option = old_option | O_NONBLOCK;
-    fcntl(fd,F_SETFL,new_option);
-}
 
-/*向epollfd中添加监听的socket*/
-void addfd(int epollfd,int fd,int isShot = false){
-    epoll_event event;
-    event.data.fd = fd;
-    //EPOLLIN:有新联接或有数据到来，EPOLLRDHUP:对方是否关闭
-    //EPOLLONESHOT:信号到达之后，除非重新调用eppol_ctl，否则不会再次唤醒线程，
-    //保证一个socket被一个线程处理
-    event.events |= EPOLLIN | EPOLLRDHUP ;
-    if(isShot){
-        event.events |= EPOLLONESHOT;
-    }
-    epoll_ctl(epollfd,EPOLL_CTL_ADD,fd,&event);
-    setnoblock(fd);
-}
-
-/*从内核事件表中删除fd*/
-void removefd(int epollfd,int fd){
-    epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,0);
-    close(fd);
-}
-
-/*将事件重置为ONESHOT*/
-void modfd(int epollfd,int fd,int old_option){
-    epoll_event event;
-    event.data.fd = fd;
-    event.events = old_option | EPOLLONESHOT | EPOLLRDHUP;
-    epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&event);
-}
 server::server()
 {
     m_port = 0;
-    m_epoolfd = 0;
+    m_epoolfd = -1;
     m_thread_number = 0;
+    m_listenfd = -1;
     users = new http_conn[MAX_FD];
 }
 
 server::~server(){
-    close(m_epoolfd);
-    close(m_listenfd);
-    delete m_threadpool;
-    delete[] users;
+    if(m_epoolfd!=-1){
+        close(m_epoolfd);
+    }
+    if(m_listenfd){
+        close(m_listenfd);
+    }
+    if(m_threadpool!=nullptr){
+        delete m_threadpool;
+    }
+    if(users!=nullptr){
+        delete[] users;
+    }
+    
 }
 
 /*server初始化函数*/
 void server::init(int port, int threadnum){
     m_port = port;
     m_thread_number = threadnum;
+    threadpool_init(m_thread_number, MAX_FD);
 }
 
 /*线程池初始化函数*/
@@ -67,9 +44,9 @@ void server::threadpool_init(int threadnum, int max_request_number){
 
 /*开始监听*/
 void server::start_listen(){
-    m_listenfd = listen(PF_INET, SOCK_STREAM);
+    m_listenfd = socket(PF_INET, SOCK_STREAM, 0);
     assert(m_listenfd >= 0);
-
+    cout << "listenfd = " << m_listenfd << endl;
     int ret = 0;
     struct sockaddr_in address;
     bzero(&address, sizeof(address));
@@ -80,27 +57,33 @@ void server::start_listen(){
     /*关闭listenfd的TIME——WAIT,防止服务器断电之后可以立马重复使用listenfd*/
     int mReuseadress = 1;
     setsockopt(m_listenfd, SOL_SOCKET, SO_REUSEADDR, &mReuseadress, sizeof(mReuseadress));
+
     ret = bind(m_listenfd, (struct sockaddr *)&address, sizeof(address));
     assert(ret >= 0);
 
-    
+    ret = listen(m_listenfd,5);
+    assert(ret >= 0);
+
     m_epoolfd = epoll_create(5);
     assert(m_epoolfd != -1);
+    cout << "m_epoolfd = " << m_epoolfd << endl;
     http_conn::m_epollfd = m_epoolfd;
-    addfd(m_epoolfd, m_listenfd);
+    http_conn::addfd(m_epoolfd, m_listenfd);
 }
 /*server主线程时间循环函数*/
-void server::event_loop(){
+int server::event_loop(){
     bool isStop = false;
-    epoll_event events[MAX_EVENT_NUMBER];//创建epoll_event事件数组
+    epoll_event m_events[MAX_EVENT_NUMBER]; //创建epoll_event事件数组
+    start_listen();
     while(!isStop){
-        int number = epoll_wait(m_epoolfd, events, MAX_EVENT_NUMBER, -1);
-        if(number<1||errno!=EINTR){
+        int number = epoll_wait(m_epoolfd, m_events, MAX_EVENT_NUMBER, -1);
+        if(number<1 && errno!=EINTR){
+            cout << "errno :" << errno << endl;
             cout << "epoll_wait failed!" << endl;
             break;
         }
         for (int i = 0; i < number; ++i){
-            int sockfd = events[i].data.fd;
+            int sockfd = m_events[i].data.fd;
             if(sockfd == m_listenfd){
                 struct sockaddr_in client_address;
                 socklen_t client_address_length = sizeof(client_address);
@@ -113,15 +96,52 @@ void server::event_loop(){
                     cout << "server internal busy!" << endl;
                     continue;
                 }
+                cout << "server listen a new connect." << endl;
                 users[connfd].init(connfd, client_address);
             }
             //EPOLLRDHUP:客户端关闭，发送FIN
-            //EPOLLHUP:读写端关闭
+            //EPOLLHUP:服务器段socket出错
             //EPOLLERR:读写出错
-            else if(events[i].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)){
-                
+            else if(m_events[i].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)){
+                cout << "m_events[" << i << "].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)" << endl;
+                users[sockfd].http_close(); //关闭客户端连接
+            }
+            /*接收到数据*/
+            else if(m_events[i].events & (EPOLLIN)){
+                if(users[sockfd].read_once()){
+                    cout << "users[" << sockfd << "].read_once()" << endl;
+                    m_threadpool->append(&users[sockfd]);
+                }
+                else{
+                    users[sockfd].http_close();
+                }
+            }
+            /*有数据要写*/
+            else if(m_events[i].events & EPOLLOUT){
+
+            }
+            /*忽略其他事件*/
+            else{
+
             }
         }
     }
+    if(m_epoolfd!=-1){
+        close(m_epoolfd);
+        m_epoolfd = -1;
+    }
+    if(m_listenfd!=-1){
+        close(m_listenfd);
+        m_listenfd = -1;
+    }
+    if(users!=nullptr){
+        delete[] users;
+        users = nullptr;
+    }
+    if(m_threadpool!=nullptr){
+        delete m_threadpool;
+        m_threadpool = nullptr;
+    }
+    
+    return 0;
 }
-

@@ -5,41 +5,54 @@ using std::endl;
 
 int http_conn::m_epollfd = -1;//静态变量初始化，
 int http_conn::m_user_count = 0;//静态变量初始化，
+
 /*将文件描述符设置成非堵塞*/
-void setnoblock(int fd){
+void http_conn::setnoblock(int fd){
     int old_option = fcntl(fd,F_GETFL);
     int new_option = old_option | O_NONBLOCK;
     fcntl(fd,F_SETFL,new_option);
 }
 
 /*向epollfd中添加监听的socket*/
-void addfd(int epollfd,int fd,int isShot = false){
+void http_conn::addfd(int epollfd,int fd,int isShot){
     epoll_event event;
     event.data.fd = fd;
     //EPOLLIN:有新联接或有数据到来，EPOLLRDHUP:对方是否关闭
     //EPOLLONESHOT:信号到达之后，除非重新调用eppol_ctl，否则不会再次唤醒线程，
     //保证一个socket被一个线程处理
-    event.events |= EPOLLIN | EPOLLRDHUP ;
+    event.events = EPOLLIN |EPOLLET | EPOLLRDHUP ;
     if(isShot){
         event.events |= EPOLLONESHOT;
     }
     epoll_ctl(epollfd,EPOLL_CTL_ADD,fd,&event);
-    setnoblock(fd);
+    http_conn::setnoblock(fd);
 }
 
+
 /*从内核事件表中删除fd*/
-void removefd(int epollfd,int fd){
+void http_conn::removefd(int epollfd,int fd){
     epoll_ctl(epollfd,EPOLL_CTL_DEL,fd,0);
     close(fd);
 }
 
 /*将事件重置为ONESHOT*/
-void modfd(int epollfd,int fd,int old_option){
+void http_conn::modfd(int epollfd,int fd,int old_option){
     epoll_event event;
     event.data.fd = fd;
     event.events = old_option | EPOLLONESHOT | EPOLLRDHUP;
     epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&event);
 }
+
+/*http关闭函数*/
+void http_conn::http_close(){
+    if(m_sockfd!=-1){
+        cout << "close socketfd:" << m_sockfd << endl;
+        close(m_sockfd);
+        m_sockfd = -1;
+        m_user_count--;//连接数减1
+    }
+}
+
 void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_sockfd = sockfd;
     m_address = addr;
@@ -59,19 +72,23 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_host = nullptr;
     m_keep_alive = false;
     m_string = nullptr;
-    memset(m_read_buff, '/0', READ_BUFFER_SIZE);
-    memset(m_write_buff,'/0',WRITE_BUFFER_SIZE);
+    memset(m_read_buff, '\0', READ_BUFFER_SIZE);
+    memset(m_write_buff,'\0',WRITE_BUFFER_SIZE);
 }
 
 void http_conn::process(){
     REQUEST_RESULT result = process_read();
     if(result == NO_REQUEST){
-        modfd(m_epollfd,m_sockfd,EPOLLIN);
+        http_conn::modfd(m_epollfd,m_sockfd,EPOLLIN);
         return;
+    }
+    else if(result ==BAD_REQUEST){
+        cout << "process :BAD_REQUEST." << endl;
     }
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
+    cout << "master_parse_line:" << text << endl;
     m_url = strpbrk(text, " \t"); //在text中找到第一个空格的位置
     if(!m_url){
         return BAD_REQUEST;
@@ -114,6 +131,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
+    cout << text << endl;
     /*处于请求头和请求体之间的空行，已被parse_line改成“\0\0”*/
     if(text[0] == '\0'){ 
         if(m_content_length!=0){
@@ -152,6 +170,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
+    cout << "master_parse_body:"<< endl << text << endl;
     if((m_check_index+m_content_length)<=m_read_index){//请求体被完整读入
         text[m_content_length] = '\0';
         m_string = text;
@@ -174,7 +193,6 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
     {
         text = m_read_buff + m_startline_index;
         m_startline_index = m_check_index;
-        std::cout << "http got 1 http line:" << text << std::endl;
         switch (m_master_state)
         {
         case MASTER_STATE_REQUESTLINE:
@@ -222,12 +240,15 @@ bool http_conn::read_once(){
     while(true){
         read_bytes = recv(m_sockfd,m_read_buff+m_read_index,READ_BUFFER_SIZE-m_read_index,0);
         if(read_bytes == -1 ){
-            if(errno == EAGAIN || errno == EWOULDBLOCK){
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                cout << "errno == EAGAIN || errno == EWOULDBLOCK" << endl;
                 break;
             }
             return false;
         }
         if(read_bytes == 0){
+            cout << "read_bytes == 0" << endl;
             return false;
         }
         m_read_index += read_bytes;

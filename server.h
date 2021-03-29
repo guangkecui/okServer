@@ -23,7 +23,7 @@ public:
     void init(int port, int threadnum);
     void threadpool_init(int threadnum, int max_request_number);
     void start_listen();
-    void event_loop();
+    int event_loop();
 };
 
 #endif

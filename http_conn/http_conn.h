@@ -86,7 +86,10 @@ private:
 public:
     http_conn(){}
     ~http_conn(){}
+    /*http类初始化函数*/
     void init(int sockfd,const sockaddr_in& addr);
+    /*http类关闭函数*/
+    void http_close();
     /*工作线程的工作函数*/
     void process();
     /*主状态机解析请求行*/
@@ -104,8 +107,11 @@ public:
     bool read_once();
     /*从状态机解析一行*/
     SLAVE_STATE slave_parse_line();
+
+    static void setnoblock(int fd);
+    static void addfd(int epollfd, int fd, int isShot = false);
+    static void removefd(int epollfd, int fd);
+    static void modfd(int epollfd, int fd, int old_option);
 };
-
-
 
 #endif
