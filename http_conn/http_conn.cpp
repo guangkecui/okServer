@@ -106,8 +106,17 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
         m_url += 7;
         m_url = strchr(m_url, '/'); //将url指向第一次出现‘/’的地方;
     }
+    if(strncasecmp(m_url,"https://",7)){
+        //去掉https：//
+        m_url += 8;
+        m_url = strchr(m_url, '/'); //将url指向第一次出现‘/’的地方;
+    }
     if(!m_url||m_url[0]!='/'){
+        cout << "!m_url||m_url[0]!='/'" << endl;
         return BAD_REQUEST;
+    }
+    if(strlen(m_url)==1){
+        strcat(m_url, "login.html");
     }
     m_master_state = MASTER_STATE_HEADER;
     return NO_REQUEST;
