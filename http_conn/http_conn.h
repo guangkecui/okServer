@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <errno.h>
+#include <string>
+using std::string;
 class http_conn
 {
 public:
@@ -82,6 +84,10 @@ private:
     int m_keep_alive;//是否保持连结
     char *m_host;//主机地址
     char *m_string;//存储请求体数据
+
+    /*请求的目标文件的全路径*/
+    string m_targetfile_path;
+    
 
 public:
     http_conn(){}

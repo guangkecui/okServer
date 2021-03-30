@@ -103,13 +103,13 @@ int server::event_loop(){
             //EPOLLHUP:服务器段socket出错
             //EPOLLERR:读写出错
             else if(m_events[i].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)){
-                cout << "m_events[" << i << "].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)" << endl;
+                cout << "m_events[" << sockfd << "].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)" << endl;
                 users[sockfd].http_close(); //关闭客户端连接
             }
             /*接收到数据*/
             else if(m_events[i].events & (EPOLLIN)){
+                cout << "users[" << sockfd << "].read_once()" << endl;
                 if(users[sockfd].read_once()){
-                    cout << "users[" << sockfd << "].read_once()" << endl;
                     m_threadpool->append(&users[sockfd]);
                 }
                 else{

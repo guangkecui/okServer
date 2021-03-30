@@ -60,7 +60,7 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_startline_index = 0;
     m_read_index = 0;
     m_master_state = 0;
-    addfd(m_epollfd, sockfd);
+    
     m_curstate_master = http_conn::MASTER_STATE_REQUESTLINE; //初始化时主状态机便在请求行上。
     m_user_count++;
 
@@ -74,6 +74,9 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_string = nullptr;
     memset(m_read_buff, '\0', READ_BUFFER_SIZE);
     memset(m_write_buff,'\0',WRITE_BUFFER_SIZE);
+
+    m_targetfile_path = "/home/server_root/";
+    addfd(m_epollfd, sockfd);
 }
 
 void http_conn::process(){
@@ -88,14 +91,15 @@ void http_conn::process(){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
-    cout << "master_parse_line:" << text << endl;
+    cout << text << endl;
     m_url = strpbrk(text, " \t"); //在text中找到第一个空格的位置
-    if(!m_url){
+    if (!m_url)
+    {
         return BAD_REQUEST;
     }
-    *m_url++ = '\0';//加入结束符
-
-    char *method = text;//text指向GET或POST
+    *m_url = '\0';//加入结束符
+    m_url++;
+    char *method = text; //text指向GET或POST
     if(strcasecmp(method,"GET") == 0){
         m_method = GET;
     }
@@ -111,28 +115,28 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
     if(!m_version){
         return BAD_REQUEST;
     }
-    *m_version++ = '\0';
-    m_version += strspn(m_version, " \t");//将mervison移动到不是\t的位置
+    *m_version = '\0';
+    m_version++;
+    m_version += strspn(m_version, " \t"); //将mervison移动到不是\t的位置
 
     if(strcasecmp(m_version,"HTTP/1.1")!=0){
         return BAD_REQUEST;
     }
 
-    if(strncasecmp(m_url,"http://",7)){
-        //去掉http：//
+    if(strncasecmp(m_url,"http://",7)==0){
         m_url += 7;
         m_url = strchr(m_url, '/'); //将url指向第一次出现‘/’的地方;
     }
-    if(strncasecmp(m_url,"https://",7)){
-        //去掉https：//
+    if(strncasecmp(m_url,"https://",8)==0){
         m_url += 8;
         m_url = strchr(m_url, '/'); //将url指向第一次出现‘/’的地方;
     }
     if(!m_url||m_url[0]!='/'){
-        cout << "!m_url||m_url[0]!='/'" << endl;
         return BAD_REQUEST;
     }
-    if(strlen(m_url)==1){
+    cout << "url length=" << strlen(m_url) << endl;
+    if (strlen(m_url) == 1)
+    {
         strcat(m_url, "login.html");
     }
     m_master_state = MASTER_STATE_HEADER;
@@ -184,6 +188,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
         text[m_content_length] = '\0';
         m_string = text;
         return GET_REQUEST;
+        m_content_length = 0;
     }
     return NO_REQUEST;
 }
@@ -197,8 +202,8 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
     REQUEST_RESULT ret = NO_REQUEST;
     SLAVE_STATE line_state = SLAVE_STATE_LINEOK;
     char* text = nullptr;
-    while ((m_master_state == MASTER_STATE_BODY)&&(line_state == SLAVE_STATE_LINEOK)||
-            (line_state = slave_parse_line())==SLAVE_STATE_LINEOK)
+    while (((m_master_state == MASTER_STATE_BODY)&&(line_state == SLAVE_STATE_LINEOK))||
+            ((line_state = slave_parse_line())==SLAVE_STATE_LINEOK))
     {
         text = m_read_buff + m_startline_index;
         m_startline_index = m_check_index;
@@ -271,7 +276,7 @@ http_conn::SLAVE_STATE http_conn::slave_parse_line(){
     for(; m_check_index < m_read_index; ++m_check_index){
         detect_char = m_read_buff[m_check_index];//获得要检测的字符
         if(detect_char == '\r'){
-            if((m_check_index+1)==m_read_index){
+            if((m_check_index+1)>=m_read_index){
                 return SLAVE_STATE_LINEOPEN;
             }
             if(m_read_buff[m_check_index+1] == '\n'){
@@ -282,7 +287,7 @@ http_conn::SLAVE_STATE http_conn::slave_parse_line(){
             return SLAVE_STATE_LINEBAD;
         }
         else if(detect_char == '\n'){
-            if(m_check_index>0 && m_read_buff[m_check_index-1] == '\r'){
+            if(m_check_index > 1 && m_read_buff[m_check_index-1] == '\r'){
                 m_read_buff[m_check_index-1] = '\0';
                 m_read_buff[m_check_index++] = '\0';
                 return SLAVE_STATE_LINEOK;
