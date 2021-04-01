@@ -11,6 +11,7 @@
 #include <sys/uio.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <pthread.h>
 #include <errno.h>
 #include <string>
@@ -21,7 +22,7 @@ public:
     /*读缓存区的大小*/
     static const int READ_BUFFER_SIZE = 2048;
     /*写缓存区的大小*/
-    static const int WRITE_BUFFER_SIZE = 1024;
+    static const int WRITE_BUFFER_SIZE = 2048;
     /*文件名的长度*/
     static const int FILENAME_LEN = 200;
     /*HTTP请求方法*/
@@ -87,7 +88,13 @@ private:
 
     /*请求的目标文件的全路径*/
     string m_targetfile_path;
-    
+    /*目标文件的状态，是否存在，是否为目录，是否可读，文件大小等*/
+    struct stat m_file_stat;
+    /*mmap返回的文件与内存映射的内存起始地址*/
+    char *m_file_address;
+    int m_write_index;/*指向write_buff中有效字符，即还未向buff中填写的第一个位置*/
+
+
 
 public:
     http_conn(){}
@@ -113,7 +120,20 @@ public:
     bool read_once();
     /*从状态机解析一行*/
     SLAVE_STATE slave_parse_line();
-
+    /*取消mmap的内存区映射*/
+    void unmap();
+    /*根据process_read返回的状态码，决定是否向write——buff中写数据*/
+    bool process_write(REQUEST_RESULT read_ret);
+    /*向http响应报文中添加状态码和状态描述*/
+    bool add_status_line(int status_code, const string &status_discrip);
+    /*向http响应报文中添加头部信息*/
+    bool add_header(int content_len);
+    /*向http响应报文中添加响应体*/
+    bool add_body(const char* body);
+    /*向http响应报文中添加响应*/
+    bool add_response(const char* format, ...);
+    /*向http响应报文中添加空行*/
+    bool add_blankline();
     static void setnoblock(int fd);
     static void addfd(int epollfd, int fd, int isShot = false);
     static void removefd(int epollfd, int fd);

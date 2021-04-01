@@ -1,10 +1,22 @@
 #include "http_conn.h"
 #include <iostream>
+#include <sys/mman.h>
 using std::cout;
 using std::endl;
-
-int http_conn::m_epollfd = -1;//静态变量初始化，
+using std::string;
+int http_conn::m_epollfd = -1;  //静态变量初始化，
 int http_conn::m_user_count = 0;//静态变量初始化，
+
+//定义http响应的一些状态信息
+const string ok_200_title = "OK";
+const string error_400_title = "Bad Request";
+const string error_400_form = "Your request has bad syntax or is inherently impossible to staisfy.\n";
+const string error_403_title = "Forbidden";
+const string error_403_form = "You do not have permission to get file form this server.\n";
+const string error_404_title = "Not Found";
+const string error_404_form = "The requested file was not found on this server.\n";
+const string error_500_title = "Internal Error";
+const string error_500_form = "There was an unusual problem serving the request file.\n";
 
 /*将文件描述符设置成非堵塞*/
 void http_conn::setnoblock(int fd){
@@ -70,14 +82,16 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     
     m_content_length = 0;
     m_host = nullptr;
-    m_keep_alive = false;
+    m_keep_alive = false;//默认为短连接
     m_string = nullptr;
     memset(m_read_buff, '\0', READ_BUFFER_SIZE);
     memset(m_write_buff,'\0',WRITE_BUFFER_SIZE);
 
-    m_targetfile_path = "/home/server_root/";
+    m_write_index = 0;
+    m_targetfile_path = "/home/server_root";
+    m_file_address = nullptr;
     addfd(m_epollfd, sockfd);
-}
+}   
 
 void http_conn::process(){
     REQUEST_RESULT result = process_read();
@@ -194,7 +208,21 @@ http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::do_request(){
-    
+    m_targetfile_path.insert(m_targetfile_path.size(), m_url);
+    if (stat(m_targetfile_path.data(), &m_file_stat) != 0)
+    {
+        return NO_RESOURCE;//没有此资源
+    }
+    if(!(m_file_stat.st_mode & S_IROTH)){
+        return FORBIDDEN_REQUEST;//没有可读权限
+    }
+    if(S_ISDIR(m_file_stat.st_mode)){
+        return BAD_REQUEST;//此文件路径为目录
+    }
+    int filefd = open(m_targetfile_path.data(), O_RDONLY);
+    m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, filefd, 0);
+    close(filefd);
+    return FILE_REQUEST;
 }
 
 /*主状态机工作函数*/
@@ -298,15 +326,62 @@ http_conn::SLAVE_STATE http_conn::slave_parse_line(){
     return SLAVE_STATE_LINEOPEN;
 }
 
+void http_conn::unmap(){
+    if(m_file_address!=nullptr){
+        munmap(m_file_address, m_file_stat.st_size);
+        m_file_address = nullptr;
+    }
+}
 
+bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
+    switch (ret)
+    {
+    case NO_RESOURCE:
 
+        break;
+    
+    default:
+        break;
+    }
+}
 
+bool http_conn::add_response(const char* format, ...){
+    if(m_write_index>=WRITE_BUFFER_SIZE){
+        return false;
+    }
+    va_list arg_list;//参数列表
+    va_start(arg_list, format);
+    int len = vsnprintf(m_write_buff + m_write_index, WRITE_BUFFER_SIZE - 1 - m_write_index, format, arg_list);
+    if(len>=(WRITE_BUFFER_SIZE-1-m_write_index)){
+        return false;//实际snprint只能写入WRITE_BUFFER_SIZE-1-m_write_index个字符
+    }
+    m_write_index += len;
+    va_end(arg_list);
+    return true;
+}
 
+bool http_conn::add_status_line(int status_code, const string &status_discrip){
+    return add_response("%s %d %s\r\n", "HTTP/1.1", 200, status_discrip.data());
+}
 
+bool http_conn::add_header(int content_len){
+    if(!add_response("Content-Length: %d\r\n",content_len)){
+        return false;
+    }
+    if(!add_response("Connection: %s\r\n",(m_keep_alive==true?"keep-alive":"close"))){
+        return false;
+    }
+    if(!add_blankline()){
+        return false;
+    }
+    return true;
+}
 
+bool http_conn::add_body(const char* body){
+    return add_response("%s", body);
+}
 
-
-
-
-
+bool http_conn::add_blankline(){
+    return add_response("\r\n");
+}
 
