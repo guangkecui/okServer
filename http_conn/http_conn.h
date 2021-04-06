@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <string>
+#include <sys/uio.h>
 using std::string;
 class http_conn
 {
@@ -44,7 +45,7 @@ public:
         BAD_REQUEST,/*错误的请求*/
         NO_RESOURCE,/*没有此资源*/
         FORBIDDEN_REQUEST,/*禁止访问资源*/
-        FILE_REQUEST,
+        FILE_REQUEST,//请求获取一个文件
         INTERNAL_ERROR,/*服务器内部错误*/
         CLOSE_CONNECTION/*关闭连接*/
     };
@@ -93,9 +94,21 @@ private:
     /*mmap返回的文件与内存映射的内存起始地址*/
     char *m_file_address;
     int m_write_index;/*指向write_buff中有效字符，即还未向buff中填写的第一个位置*/
-
-
-
+    /*向量表：iv[0].base:writebuff起始地址；
+            iv[0].len:writebuff长度；
+            iv[1].base:文件映射的内存起始地址；
+            iv[1].len:文件映射的内存长度；*/
+    struct iovec m_iv[2];
+    int m_iv_count;
+    /*将要发送的字节个数*/
+    int bytes_to_send;
+    /*已经发送的字节个数*/
+    int bytes_have_send;
+public:
+    static void setnoblock(int fd);
+    static void addfd(int epollfd, int fd, int isShot = false);
+    static void removefd(int epollfd, int fd);
+    static void modfd(int epollfd, int fd, int old_option);
 public:
     http_conn(){}
     ~http_conn(){}
@@ -105,6 +118,15 @@ public:
     void http_close();
     /*工作线程的工作函数*/
     void process();
+    
+    /*读取缓冲区*/
+    REQUEST_RESULT process_read();
+    /*工作线程每次执行process之前，都要执行read_once，
+    即读取缓冲区内的数据*/
+    bool read_once();
+    /*向TCP缓冲区中写数据*/
+    bool write();
+private:
     /*主状态机解析请求行*/
     REQUEST_RESULT master_parse_line(char* text);
     /*主状态机解析头部*/
@@ -113,11 +135,6 @@ public:
     REQUEST_RESULT master_parse_body(char* text);
     /*主状态机对完整的请求作出响应*/
     REQUEST_RESULT do_request();
-    /*读取缓冲区*/
-    REQUEST_RESULT process_read();
-    /*工作线程每次执行process之前，都要执行read_once，
-    即读取缓冲区内的数据*/
-    bool read_once();
     /*从状态机解析一行*/
     SLAVE_STATE slave_parse_line();
     /*取消mmap的内存区映射*/
@@ -134,10 +151,11 @@ public:
     bool add_response(const char* format, ...);
     /*向http响应报文中添加空行*/
     bool add_blankline();
-    static void setnoblock(int fd);
-    static void addfd(int epollfd, int fd, int isShot = false);
-    static void removefd(int epollfd, int fd);
-    static void modfd(int epollfd, int fd, int old_option);
+    
+    /*私有初始化函数*/
+    void init();
+    
+
 };
 
 #endif

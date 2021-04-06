@@ -68,40 +68,24 @@ void http_conn::http_close(){
 void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_sockfd = sockfd;
     m_address = addr;
-    m_check_index = 0;
-    m_startline_index = 0;
-    m_read_index = 0;
-    m_master_state = 0;
-    
-    m_curstate_master = http_conn::MASTER_STATE_REQUESTLINE; //初始化时主状态机便在请求行上。
     m_user_count++;
-
-    m_url = nullptr;
-    m_method = GET;
-    m_version = nullptr;
-    
-    m_content_length = 0;
-    m_host = nullptr;
-    m_keep_alive = false;//默认为短连接
-    m_string = nullptr;
-    memset(m_read_buff, '\0', READ_BUFFER_SIZE);
-    memset(m_write_buff,'\0',WRITE_BUFFER_SIZE);
-
-    m_write_index = 0;
-    m_targetfile_path = "/home/server_root";
-    m_file_address = nullptr;
     addfd(m_epollfd, sockfd);
+
+    
+    
 }   
 
 void http_conn::process(){
-    REQUEST_RESULT result = process_read();
-    if(result == NO_REQUEST){
+    REQUEST_RESULT read_ret = process_read();
+    if(read_ret == NO_REQUEST){
         http_conn::modfd(m_epollfd,m_sockfd,EPOLLIN);
         return;
     }
-    else if(result ==BAD_REQUEST){
-        cout << "process :BAD_REQUEST." << endl;
+    bool write_ret = process_write(read_ret);
+    if(!write_ret){
+        http_close();
     }
+    modfd(m_epollfd, m_sockfd, EPOLLOUT);
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
@@ -336,13 +320,64 @@ void http_conn::unmap(){
 bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
     switch (ret)
     {
+    case BAD_REQUEST:
+        {add_status_line(400, error_400_title);
+        add_header(error_500_form.size());
+        if(!add_body(error_500_form.data())){
+            return false;
+        }
+        break;}
+    case FORBIDDEN_REQUEST:
+        {add_status_line(403, error_403_title);
+        add_header(error_403_form.size());
+        if(!add_body(error_403_form.data())){
+            return false;
+        }
+        break;}
     case NO_RESOURCE:
-
-        break;
-    
-    default:
+        {add_status_line(404, error_404_title);
+        add_header(error_404_form.size());
+        if(!add_body(error_404_form.data())){
+            return false;
+        }
+        break;}
+    case INTERNAL_ERROR:
+        {add_status_line(500, error_500_title);
+        add_header(error_500_form.size());
+        if(!add_body(error_500_form.data())){
+            return false;
+        }
+        break;}
+    case FILE_REQUEST:
+    {
+        add_status_line(200, ok_200_title);
+        if(m_file_stat.st_size!=0){
+            add_header(m_file_stat.st_size);
+            m_iv[0].iov_base = m_write_buff;
+            m_iv[0].iov_len = m_write_index;
+            m_iv[1].iov_base = m_file_address;
+            m_iv[1].iov_len = m_file_stat.st_size;
+            m_iv_count = 2;
+            return true;
+        }
+        else{
+            /*没有文件要传输*/
+            string readysend = "<html><body></body></html>";
+            add_header(readysend.size());
+            if(!add_body(readysend.data())){
+                return false;
+            }
+        }
         break;
     }
+    default:
+        return false;
+        break;
+    }
+    m_iv[0].iov_base = m_write_buff;
+    m_iv[0].iov_len = m_write_index;
+    m_iv_count = 1;
+    return true;
 }
 
 bool http_conn::add_response(const char* format, ...){
@@ -385,3 +420,71 @@ bool http_conn::add_blankline(){
     return add_response("\r\n");
 }
 
+bool http_conn::write(){
+    int ret = 0;
+    if(bytes_to_send==0){
+        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        init();
+        return true;
+    }
+    while(true){
+        ret = writev(m_sockfd, m_iv, m_iv_count);
+        if(ret<0){
+            if(errno==EAGAIN){
+                modfd(m_epollfd, m_sockfd, EPOLLOUT);
+                return true;
+            }
+            unmap();
+            return false;
+        }
+        bytes_have_send += ret;
+        bytes_to_send -= ret;
+        if(bytes_have_send>=m_iv[0].iov_len){
+            m_iv[0].iov_len = 0;
+            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_index);
+            m_iv[1].iov_len = bytes_to_send;
+        }
+        else{
+            m_iv[0].iov_base = m_write_buff + bytes_have_send;
+            m_iv[0].iov_len -= bytes_have_send;
+        }
+
+        if(bytes_to_send<=0){
+            unmap();
+            modfd(m_epollfd, m_sockfd, EPOLLIN);
+            if(m_keep_alive){
+                init();
+                return true;
+            }
+            else{
+                return false;
+            }
+        }
+    }
+}
+
+void http_conn::init(){
+    m_check_index = 0;
+    m_startline_index = 0;
+    m_read_index = 0;
+    m_master_state = http_conn::MASTER_STATE_REQUESTLINE; //初始化时主状态机便在请求行上。;
+    
+
+    m_url = nullptr;
+    m_method = GET;
+    m_version = nullptr;
+    
+    m_content_length = 0;
+    m_host = nullptr;
+    m_keep_alive = false;//默认为短连接
+    m_string = nullptr;
+    memset(m_read_buff, '\0', READ_BUFFER_SIZE);
+    memset(m_write_buff,'\0',WRITE_BUFFER_SIZE);
+
+    m_write_index = 0;
+    m_targetfile_path = "/home/server_root";
+    m_file_address = nullptr;
+    m_iv_count = 2;
+    bytes_to_send = 0;
+    bytes_have_send = 0;
+}

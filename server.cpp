@@ -118,7 +118,13 @@ int server::event_loop(){
             }
             /*有数据要写*/
             else if(m_events[i].events & EPOLLOUT){
-
+                cout << "users[" << sockfd << "].write" << endl;
+                if(users[sockfd].write()){
+                    cout << "write success,keep alive." << endl;
+                }
+                else{
+                    cout << "close keep alive" << endl;
+                }
             }
             /*忽略其他事件*/
             else{
