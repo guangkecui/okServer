@@ -4,6 +4,7 @@
 using std::cout;
 using std::endl;
 using std::string;
+using std::unordered_map;
 int http_conn::m_epollfd = -1;  //静态变量初始化，
 int http_conn::m_user_count = 0;//静态变量初始化，
 
@@ -70,9 +71,7 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_address = addr;
     m_user_count++;
     addfd(m_epollfd, sockfd);
-
-    
-    
+    init();
 }   
 
 void http_conn::process(){
@@ -135,7 +134,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
     cout << "url length=" << strlen(m_url) << endl;
     if (strlen(m_url) == 1)
     {
-        strcat(m_url, "login.html");
+        strcat(m_url, "homepage.html");
     }
     m_master_state = MASTER_STATE_HEADER;
     return NO_REQUEST;
@@ -192,18 +191,28 @@ http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::do_request(){
-    m_targetfile_path.insert(m_targetfile_path.size(), m_url);
+    m_targetfile_path.append(m_url);
+    cout << "m_targetfile_path = " << m_targetfile_path << endl;
     if (stat(m_targetfile_path.data(), &m_file_stat) != 0)
     {
-        return NO_RESOURCE;//没有此资源
+        cout << m_targetfile_path << " NO_RESOURCE" << endl;
+        return NO_RESOURCE; //没有此资源
     }
     if(!(m_file_stat.st_mode & S_IROTH)){
+        cout << m_targetfile_path << " FORBIDDEN_REQUEST" << endl;
         return FORBIDDEN_REQUEST;//没有可读权限
     }
     if(S_ISDIR(m_file_stat.st_mode)){
+        cout << m_targetfile_path << " 此文件路径为目录" << endl;
         return BAD_REQUEST;//此文件路径为目录
     }
     int filefd = open(m_targetfile_path.data(), O_RDONLY);
+    if(filefd==-1){
+        cout << "file open failed" << endl;
+    }
+    else{
+        cout << "file open successful" << endl;
+    }
     m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, filefd, 0);
     close(filefd);
     return FILE_REQUEST;
@@ -225,6 +234,7 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
             {
                 ret = master_parse_line(text);
                 if(ret == BAD_REQUEST){
+                    cout << "master_parse_line BAD_REQUEST" << endl;
                     return BAD_REQUEST;
                 }
                 break;
@@ -233,9 +243,11 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
             {   
                 ret = master_parse_header(text);
                 if(ret == BAD_REQUEST){
+                    cout << "master_parse_header BAD_REQUEST" << endl;
                     return BAD_REQUEST;
                 }
                 else if(ret == GET_REQUEST){
+                    cout << "master_parse_header GET_REQUEST" << endl;
                     return do_request();
                 }
                 break;
@@ -244,6 +256,7 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
             {   
                 ret = master_parse_body(text);
                 if(ret==GET_REQUEST){
+                    cout << "master_parse_body GET_REQUEST" << endl;
                     return do_request();
                 }
                 line_state = SLAVE_STATE_LINEOPEN;
@@ -251,6 +264,7 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
             }
         default:
             {
+                cout << "INTERNAL_ERROR" << endl;
                 return INTERNAL_ERROR;//返回服务器内部错误
             }
         }
@@ -358,6 +372,7 @@ bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
             m_iv[1].iov_base = m_file_address;
             m_iv[1].iov_len = m_file_stat.st_size;
             m_iv_count = 2;
+            bytes_to_send = m_write_index + m_file_stat.st_size;
             return true;
         }
         else{
@@ -482,9 +497,33 @@ void http_conn::init(){
     memset(m_write_buff,'\0',WRITE_BUFFER_SIZE);
 
     m_write_index = 0;
-    m_targetfile_path = "/home/server_root";
+    m_targetfile_path = "/home/allen/server_root";
     m_file_address = nullptr;
     m_iv_count = 2;
     bytes_to_send = 0;
     bytes_have_send = 0;
+}
+
+bool http_conn::cgi_process(int state,const string& name,const string& password){
+    if(state==1){
+        /*当前为登陆*/
+        if(!m_name_password.count(name)){
+            return false;
+        }
+        if(m_name_password[name]!=password){
+            return false;
+        }
+        return true;
+    }
+    else if(state==2){
+        /*当前为注册*/
+        if(m_name_password.count(name)){
+            return false;/*用户名已经存在*/
+        }
+        else{
+            m_name_password[name] = password;
+            return true;/*注册成功*/
+        }
+    }
+    return false;/*存在未知的状态*/
 }

@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <string>
 #include <sys/uio.h>
+#include <unordered_map>
 using std::string;
 class http_conn
 {
@@ -23,7 +24,7 @@ public:
     /*读缓存区的大小*/
     static const int READ_BUFFER_SIZE = 2048;
     /*写缓存区的大小*/
-    static const int WRITE_BUFFER_SIZE = 2048;
+    static const int WRITE_BUFFER_SIZE = 10240;
     /*文件名的长度*/
     static const int FILENAME_LEN = 200;
     /*HTTP请求方法*/
@@ -104,6 +105,9 @@ private:
     int bytes_to_send;
     /*已经发送的字节个数*/
     int bytes_have_send;
+
+    std::unordered_map<string, string> m_name_password;
+
 public:
     static void setnoblock(int fd);
     static void addfd(int epollfd, int fd, int isShot = false);
@@ -154,8 +158,12 @@ private:
     
     /*私有初始化函数*/
     void init();
-    
-
+    /*cgi处理程序,若用户名存在-密码对返回true
+            用户名存在-密码错误返回false
+            用户名不存在-且为登陆，返回false
+            用户名不存在-且为注册，返回true
+            @state:注册：1；登陆：2；*/
+    bool cgi_process(int state,const string& name,const string& password);
 };
 
 #endif
