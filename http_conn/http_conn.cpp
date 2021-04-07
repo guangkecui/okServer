@@ -70,6 +70,9 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_sockfd = sockfd;
     m_address = addr;
     m_user_count++;
+    if(!m_name_password.count("123")){
+        m_name_password["123"] = "123";
+    }
     addfd(m_epollfd, sockfd);
     init();
 }   
@@ -161,13 +164,14 @@ http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
         }
     }
     /*处理content-length*/
-    else if(strncasecmp(text,"Content-Length:",15)){
+    else if(strncasecmp(text,"Content-Length:",15)==0){
         text += 15;
         text += strspn(text, " \t");
         m_content_length = atoi(text);
+        cout << "m_content_length = " << m_content_length << endl;
     }
     /*处理HOST*/
-    else if(strncasecmp(text,"Host:",4)){
+    else if(strncasecmp(text,"Host:",4)==0){
         text += 5;
         text += strspn(text, " \t");
         m_host = text;
@@ -190,8 +194,36 @@ http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
     return NO_REQUEST;
 }
 
+/*
+0:登陆  1：注册    2：欢迎界面       
+*/
 http_conn::REQUEST_RESULT http_conn::do_request(){
-    m_targetfile_path.append(m_url);
+    if(strcmp(m_url,"/homepage.html")!=0){
+        int index = (*(strrchr(m_url, '/')+1))-'0';
+        switch (index)
+        {
+        case 0:{
+            string name;
+            string password;
+            process_cgi(name, password);
+            cout << "name =" << name << ",password=" << password << endl;
+            if(user_is_valid(index,name,password)){
+                m_targetfile_path.append("/welcome.html");
+            }
+            else{
+                m_targetfile_path.append("/loginfailed.html");
+            }
+            break;
+        }
+        
+        default:
+            break;
+        }
+    }
+    else{
+        m_targetfile_path.append(m_url);
+    }
+    
     cout << "m_targetfile_path = " << m_targetfile_path << endl;
     if (stat(m_targetfile_path.data(), &m_file_stat) != 0)
     {
@@ -504,8 +536,27 @@ void http_conn::init(){
     bytes_have_send = 0;
 }
 
-bool http_conn::cgi_process(int state,const string& name,const string& password){
-    if(state==1){
+void http_conn::process_cgi(string &name, string &password){
+    char *index = m_string;
+    index = strchr(m_string, '=');
+    if(index!=NULL){
+        m_string = index + 1;
+    }
+    index = strchr(m_string, '&');
+    if(index!=NULL){
+        *index = '\0';
+    }
+    name.append(m_string);
+    index++;
+    index = strchr(m_string, '=');
+    if(index!=NULL){
+        m_string = index + 1;
+    }
+    password.append(m_string);
+}
+
+bool http_conn::user_is_valid(int state,const string& name,const string& password){
+    if(state==0){
         /*当前为登陆*/
         if(!m_name_password.count(name)){
             return false;
@@ -515,7 +566,7 @@ bool http_conn::cgi_process(int state,const string& name,const string& password)
         }
         return true;
     }
-    else if(state==2){
+    else if(state==1){
         /*当前为注册*/
         if(m_name_password.count(name)){
             return false;/*用户名已经存在*/

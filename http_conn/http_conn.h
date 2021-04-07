@@ -65,7 +65,6 @@ public:
 public:
     static int m_epollfd;
     static int m_user_count;
-
 private:
     int m_sockfd;//套接字
     sockaddr_in m_address;
@@ -105,8 +104,8 @@ private:
     int bytes_to_send;
     /*已经发送的字节个数*/
     int bytes_have_send;
-
     std::unordered_map<string, string> m_name_password;
+    
 
 public:
     static void setnoblock(int fd);
@@ -163,7 +162,10 @@ private:
             用户名不存在-且为登陆，返回false
             用户名不存在-且为注册，返回true
             @state:注册：1；登陆：2；*/
-    bool cgi_process(int state,const string& name,const string& password);
+    void process_cgi(string &name, string &password);
+    /*判断用户名-密码是否有效*/
+    bool user_is_valid(int state,const string& name,const string& password);
+
 };
 
 #endif
