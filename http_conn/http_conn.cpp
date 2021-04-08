@@ -195,7 +195,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
 }
 
 /*
-0:登陆  1：注册    2：欢迎界面       
+0:登陆  1：注册    2:注册确认; 3: 注册成功回到主页
 */
 http_conn::REQUEST_RESULT http_conn::do_request(){
     if(strcmp(m_url,"/homepage.html")!=0){
@@ -215,7 +215,27 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
             }
             break;
         }
-        
+        case 1:{
+            m_targetfile_path.append("/register.html");
+            break;
+        }
+        case 2:{
+            string name;
+            string password;
+            process_cgi(name, password);
+            cout << "name =" << name << ",password=" << password << endl;
+            if(user_is_valid(index,name,password)){
+                m_targetfile_path.append("/registerSuccess.html");
+            }
+            else{
+                m_targetfile_path.append("/registerFailed.html");
+            }
+            break;
+        }
+        case 3:{
+            m_targetfile_path.append("/welcome.html");
+            break;
+        }
         default:
             break;
         }
