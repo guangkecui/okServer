@@ -14,7 +14,7 @@ public:
     ~task();
     void process(void){
         cout<<"task is start working;--"<<pthread_self()<<endl;
-        for(int i=0;i<1000000;++i){
+        for(int i=0;i<100000;++i){
         }
         cout<<"task is end working;--"<<pthread_self()<<endl;
     }
