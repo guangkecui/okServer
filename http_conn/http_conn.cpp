@@ -202,7 +202,7 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
         int index = (*(strrchr(m_url, '/')+1))-'0';
         switch (index)
         {
-        case 0:{
+        case 0:{/*点击登录*/
             string name;
             string password;
             process_cgi(name, password);
@@ -215,11 +215,11 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
             }
             break;
         }
-        case 1:{
+        case 1:{/*点击注册*/
             m_targetfile_path.append("/register.html");
             break;
         }
-        case 2:{
+        case 2:{/*注册确认*/
             string name;
             string password;
             process_cgi(name, password);
@@ -232,12 +232,14 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
             }
             break;
         }
-        case 3:{
+        case 3:{/*注册成功回到主页*/
             m_targetfile_path.append("/welcome.html");
             break;
         }
-        default:
+        default:{
+            m_targetfile_path.append(m_url);
             break;
+            }
         }
     }
     else{
@@ -586,7 +588,7 @@ bool http_conn::user_is_valid(int state,const string& name,const string& passwor
         }
         return true;
     }
-    else if(state==1){
+    else if(state==2){
         /*当前为注册*/
         if(m_name_password.count(name)){
             return false;/*用户名已经存在*/
