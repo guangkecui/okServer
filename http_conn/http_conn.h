@@ -17,7 +17,7 @@
 #include <string>
 #include <sys/uio.h>
 #include <unordered_map>
-#include "timer/timermanage.h"
+#include "./timer/timermanage.h"
 using std::string;
 class http_conn
 {
@@ -133,6 +133,12 @@ public:
     bool write();
     /*向http类绑定定时器*/
     void linktimer(timerNode *timer);
+    /*定时器解绑*/
+    void unlinktimer();
+    /*获得定时器*/
+    timerNode *get_timer() const { return m_timer; }
+    /*获得socket*/
+    int get_socket() const { return m_sockfd; }
 
 private:
     /*主状态机解析请求行*/

@@ -60,16 +60,21 @@ void http_conn::modfd(int epollfd,int fd,int old_option){
 void http_conn::http_close(){
     if(m_sockfd!=-1){
         cout << "close socketfd:" << m_sockfd << endl;
-        close(m_sockfd);
+        removefd(m_epollfd,m_sockfd);
         m_sockfd = -1;
         m_user_count--;//连接数减1
     }
+    if(m_timer!=nullptr){
+        m_timer->setDelete();
+    }
+    unlinktimer();
 }
 
 void http_conn::init(int sockfd,const sockaddr_in& addr){
     m_sockfd = sockfd;
     m_address = addr;
     m_user_count++;
+    m_timer = nullptr;
     if(!m_name_password.count("123")){
         m_name_password["123"] = "123";
     }
@@ -541,6 +546,12 @@ void http_conn::linktimer(timerNode *timer){
     m_timer = timer;
 }
 
+void http_conn::unlinktimer(){
+    if(m_timer!=nullptr){
+        m_timer = nullptr;
+    }
+}
+
 void http_conn::init(){
     m_check_index = 0;
     m_startline_index = 0;
@@ -565,8 +576,6 @@ void http_conn::init(){
     m_iv_count = 2;
     bytes_to_send = 0;
     bytes_have_send = 0;
-
-    m_timer = nullptr;
 }
 
 void http_conn::process_cgi(string &name, string &password){

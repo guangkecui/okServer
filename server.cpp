@@ -11,6 +11,7 @@ server::server()
     m_thread_number = 0;
     m_listenfd = -1;
     users = new http_conn[MAX_FD];
+    
 }
 
 server::~server(){
@@ -26,7 +27,6 @@ server::~server(){
     if(users!=nullptr){
         delete[] users;
     }
-    
 }
 
 /*server初始化函数*/
@@ -69,10 +69,20 @@ void server::start_listen(){
     cout << "m_epoolfd = " << m_epoolfd << endl;
     http_conn::m_epollfd = m_epoolfd;
     http_conn::addfd(m_epoolfd, m_listenfd);
+
+    /*定时相关*/
+    /*SIGPIPE信号：
+    客户端异常关闭socket后，server收到FIN信号，如果此时server向client写数据，第一次会受到RST
+    第二次会受到SIGPIPE，其默认是关闭当前进程，所以需要忽略*/
+    m_timerManger.addsig(SIGPIPE, SIG_IGN);/*SIG_IGN表示忽略SIGPIPE信号*/
+    m_timerManger.addsig(SIGALRM, m_timerManger.sig_hander); /*添加定时信号*/
+    m_timerManger.addsig(SIGTERM, m_timerManger.sig_hander);/*终止进程信号*/
+    alarm(m_timerManger.get_timerlot()); /*开启定时*/
 }
 /*server主线程时间循环函数*/
 int server::event_loop(){
     bool isStop = false;
+    bool timeout = false;/*定时器是否到时*/
     epoll_event m_events[MAX_EVENT_NUMBER]; //创建epoll_event事件数组
     start_listen();
     while(!isStop){
@@ -98,6 +108,7 @@ int server::event_loop(){
                 }
                 cout << "server listen a new connect." << endl;
                 users[connfd].init(connfd, client_address);
+                m_timerManger.add_timer(&users[connfd]);/*向时间堆中添加定时器，并于http绑定*/
             }
             //EPOLLRDHUP:客户端关闭，发送FIN
             //EPOLLHUP:服务器段socket出错
@@ -106,11 +117,18 @@ int server::event_loop(){
                 cout << "m_events[" << sockfd << "].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)" << endl;
                 users[sockfd].http_close(); //关闭客户端连接
             }
+            /*接收到信号*/
+            else if (sockfd == timerManager::timer_pipefd[0] && (m_events[i].events & EPOLLIN)){
+                dealwith_sig(timeout, isStop);
+            }
             /*接收到数据*/
-            else if(m_events[i].events & (EPOLLIN)){
+            else if (m_events[i].events & (EPOLLIN))
+            {
                 cout << "users[" << sockfd << "].read_once()" << endl;
-                if(users[sockfd].read_once()){
+                if (users[sockfd].read_once())
+                {
                     m_threadpool->append(&users[sockfd]);
+                    m_timerManger.updata(users[sockfd].get_timer()); /*更新定时器*/
                 }
                 else{
                     users[sockfd].http_close();
@@ -120,15 +138,20 @@ int server::event_loop(){
             else if(m_events[i].events & EPOLLOUT){
                 cout << "users[" << sockfd << "].write" << endl;
                 if(users[sockfd].write()){
-                    cout << "write success,keep alive." << endl;
+                    cout << "write successful" << endl;
                 }
                 else{
+
                     cout << "close keep alive" << endl;
                 }
             }
             /*忽略其他事件*/
             else{
 
+            }
+            if(timeout){
+                m_timerManger.handler();
+                timeout = false;
             }
         }
     }
@@ -150,4 +173,36 @@ int server::event_loop(){
     }
     
     return 0;
+}
+
+bool server::dealwith_sig(bool & timeout, bool & isServerStop){
+    char sig[1024];
+    int res = 0;
+    int ret = recv(timerManager::timer_pipefd[0], sig, sizeof(sig),0);
+    if(ret==-1){
+        cout << "server receive error signal" << endl;
+        return false;
+    }
+    else if(ret==0){
+        cout << "server receive 0 signal" << endl;
+        return false;
+    }
+    else{
+        for (int i = 0; i < ret; ++i){
+            switch (sig[i])
+            {
+            case SIGTERM:{
+                isServerStop = true;
+                break;
+            }
+            case SIGALRM:{
+                timeout = true;
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+    return true;
 }

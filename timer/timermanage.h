@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include "http_conn/http_conn.h"
-
+#include <signal.h>
 class http_conn;
 
 /*定时器节点类*/
@@ -22,8 +22,10 @@ public:
     bool isDelete() const { return m_isdelete; }
     bool isExpeire();
     void updata(int timeslot = 5);
+    http_conn *getHttp() const { return m_httpNode; }
     ~timerNode();
     time_t getTimerExpeir() const { return expeire_time; }
+    
 };
 /*小根堆自定义比较函数*/
 struct timerCmp{
@@ -38,14 +40,21 @@ class timerManager
 private:
     typedef timerNode* timerNode_ptr;
     std::priority_queue<timerNode_ptr, std::vector<timerNode_ptr>, timerCmp> timer_heap;
+    int m_timerslot;/*每隔3*m_timerslot进行一次心跳执行函数*/
 
 public:
-    void add_timer(http_conn *http, int timeslot);
+    static int timer_pipefd[2];
+    void add_timer(http_conn *http, int timeslot = 5);
     void del_timer(http_conn *http);
     void handler();
-    timerManager(/* args */);
+    timerManager() { m_timerslot = 15; }
+    timerManager(int timerslot):m_timerslot(timerslot*3){}
     ~timerManager();
+    int get_timerlot() const { return m_timerslot; }
+    static void sig_hander(int sig);/*信号的响应函数*/
+    void addsig(int sig,void(sig_hander)(int)); /*往信号集里添加信号*/
+    void updata(timerNode_ptr timer);/*更新定时器节点，在堆中找到这个节点，并将其
+                                        到期时间更改，再将其重新押入堆中*/
 };
-
 
 #endif
