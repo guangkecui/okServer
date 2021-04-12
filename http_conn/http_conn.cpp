@@ -73,6 +73,7 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     if(!m_name_password.count("123")){
         m_name_password["123"] = "123";
     }
+
     addfd(m_epollfd, sockfd);
     init();
 }   
@@ -532,6 +533,14 @@ bool http_conn::write(){
     }
 }
 
+void http_conn::linktimer(timerNode *timer){
+    if(m_timer!=nullptr){
+        delete m_timer;
+        m_timer = nullptr;
+    }
+    m_timer = timer;
+}
+
 void http_conn::init(){
     m_check_index = 0;
     m_startline_index = 0;
@@ -556,6 +565,8 @@ void http_conn::init(){
     m_iv_count = 2;
     bytes_to_send = 0;
     bytes_have_send = 0;
+
+    m_timer = nullptr;
 }
 
 void http_conn::process_cgi(string &name, string &password){

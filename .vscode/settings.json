@@ -7,8 +7,8 @@
         "istream": "cpp",
         "sstream": "cpp",
         "new": "cpp",
-        "functional": "cpp"
-        
+        "functional": "cpp",
+        "queue": "cpp"
     }
     
     

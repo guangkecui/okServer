@@ -17,6 +17,7 @@
 #include <string>
 #include <sys/uio.h>
 #include <unordered_map>
+#include "timer/timermanage.h"
 using std::string;
 class http_conn
 {
@@ -105,7 +106,8 @@ private:
     /*已经发送的字节个数*/
     int bytes_have_send;
     std::unordered_map<string, string> m_name_password;
-    
+    /*绑定的定时器*/
+    timerNode *m_timer;                                                                               
 
 public:
     static void setnoblock(int fd);
@@ -129,6 +131,9 @@ public:
     bool read_once();
     /*向TCP缓冲区中写数据*/
     bool write();
+    /*向http类绑定定时器*/
+    void linktimer(timerNode *timer);
+
 private:
     /*主状态机解析请求行*/
     REQUEST_RESULT master_parse_line(char* text);
