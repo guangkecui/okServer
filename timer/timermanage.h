@@ -3,8 +3,8 @@
 #include <queue>
 #include <unistd.h>
 #include <sys/time.h>
-#include "http_conn/http_conn.h"
 #include <signal.h>
+#include "../http_conn/http_conn.h"
 class http_conn;
 
 /*定时器节点类*/
@@ -43,7 +43,7 @@ private:
     int m_timerslot;/*每隔3*m_timerslot进行一次心跳执行函数*/
 
 public:
-    static int timer_pipefd[2];
+    static int *timer_pipefd;/*信号管道写端*/
     void add_timer(http_conn *http, int timeslot = 5);
     void del_timer(http_conn *http);
     void handler();

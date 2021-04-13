@@ -5,6 +5,7 @@
 using std::cout;
 using std::endl;
 using std::stack;
+
 timerNode::timerNode(http_conn *httpnode, int timeslot, bool isdelete) : m_httpNode(httpnode),
                                                                          m_isdelete(isdelete)
 {
@@ -13,10 +14,7 @@ timerNode::timerNode(http_conn *httpnode, int timeslot, bool isdelete) : m_httpN
 }
 
 timerNode::~timerNode(){
-    if(m_httpNode!=nullptr){
-        delete m_httpNode;
-        m_httpNode = nullptr;
-    }
+    m_httpNode = nullptr;
 }
 
 /*将此节点定义为要删除的节点
@@ -43,6 +41,18 @@ bool timerNode::isExpeire(){
 void timerNode::updata(int timeslot){
     time_t cur = time(nullptr);
     expeire_time = cur + 3 * timeslot;
+}
+
+int * timerManager::timer_pipefd = nullptr;/*静态变量初始化*/
+
+timerManager::~timerManager()
+{
+    while(!timer_heap.empty()){
+        timerNode_ptr curtimer = timer_heap.top();
+        curtimer->getHttp()->unlinktimer();
+        delete curtimer;
+        curtimer = nullptr;
+    }
 }
 
 /*每次有新的socket连接，就需要新建一个定时器与其绑定，并将之前绑定的定时器删除*/
@@ -73,8 +83,8 @@ void timerManager::handler(){
         }
         else if(curtimer->isExpeire()){
             cout << "删除socket " << curtimer->getHttp()->get_socket() << " 定时器删除" << endl;
+            curtimer->getHttp()->http_close();
             timer_heap.pop();
-            curtimer->getHttp()->unlinktimer();
             delete curtimer;
             curtimer = nullptr;
         }
@@ -109,25 +119,10 @@ void timerManager::updata(timerNode_ptr timer){
     {
         timerNode_ptr curtimer = timer_heap.top();
         timer_heap.pop();
+        timer_stack.push(curtimer);
         if(curtimer==timer){
             curtimer->updata();
-            timer_stack.push(curtimer);
-        }
-        else if(curtimer->isDelete()){
-            cout << "删除socket " << curtimer->getHttp()->get_socket() << " 定时器删除" << endl;
-            curtimer->getHttp()->unlinktimer();
-            delete curtimer;
-            curtimer = nullptr;
-            
-        }
-        else if(curtimer->isExpeire()){
-            cout << "删除socket " << curtimer->getHttp()->get_socket() << " 定时器删除" << endl;
-            curtimer->getHttp()->unlinktimer();
-            delete curtimer;
-            curtimer = nullptr;
-        }
-        else{
-            timer_stack.push(curtimer);
+            break;
         }
     }
     while(!timer_stack.empty()){

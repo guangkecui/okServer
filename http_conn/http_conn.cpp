@@ -1,6 +1,7 @@
 #include "http_conn.h"
 #include <iostream>
 #include <sys/mman.h>
+
 using std::cout;
 using std::endl;
 using std::string;
@@ -52,7 +53,7 @@ void http_conn::removefd(int epollfd,int fd){
 void http_conn::modfd(int epollfd,int fd,int old_option){
     epoll_event event;
     event.data.fd = fd;
-    event.events = old_option | EPOLLONESHOT | EPOLLRDHUP;
+    event.events = old_option | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
     epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&event);
 }
 
@@ -97,7 +98,6 @@ void http_conn::process(){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
-    cout << text << endl;
     m_url = strpbrk(text, " \t"); //在text中找到第一个空格的位置
     if (!m_url)
     {
@@ -140,7 +140,6 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
     if(!m_url||m_url[0]!='/'){
         return BAD_REQUEST;
     }
-    cout << "url length=" << strlen(m_url) << endl;
     if (strlen(m_url) == 1)
     {
         strcat(m_url, "homepage.html");
@@ -150,7 +149,6 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
-    cout << text << endl;
     /*处于请求头和请求体之间的空行，已被parse_line改成“\0\0”*/
     if(text[0] == '\0'){ 
         if(m_content_length!=0){
@@ -174,7 +172,6 @@ http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
         text += 15;
         text += strspn(text, " \t");
         m_content_length = atoi(text);
-        cout << "m_content_length = " << m_content_length << endl;
     }
     /*处理HOST*/
     else if(strncasecmp(text,"Host:",4)==0){
@@ -184,13 +181,11 @@ http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
     }
     /*其余暂时不处理*/
     else{
-        std::cout << "unknow header:" << text << std::endl;
     }
     return NO_REQUEST;
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
-    cout << "master_parse_body:"<< endl << text << endl;
     if((m_check_index+m_content_length)<=m_read_index){//请求体被完整读入
         text[m_content_length] = '\0';
         m_string = text;
@@ -252,7 +247,6 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
         m_targetfile_path.append(m_url);
     }
     
-    cout << "m_targetfile_path = " << m_targetfile_path << endl;
     if (stat(m_targetfile_path.data(), &m_file_stat) != 0)
     {
         cout << m_targetfile_path << " NO_RESOURCE" << endl;
@@ -294,7 +288,6 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
             {
                 ret = master_parse_line(text);
                 if(ret == BAD_REQUEST){
-                    cout << "master_parse_line BAD_REQUEST" << endl;
                     return BAD_REQUEST;
                 }
                 break;
@@ -303,11 +296,9 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
             {   
                 ret = master_parse_header(text);
                 if(ret == BAD_REQUEST){
-                    cout << "master_parse_header BAD_REQUEST" << endl;
                     return BAD_REQUEST;
                 }
                 else if(ret == GET_REQUEST){
-                    cout << "master_parse_header GET_REQUEST" << endl;
                     return do_request();
                 }
                 break;
@@ -316,7 +307,6 @@ http_conn::REQUEST_RESULT http_conn::process_read(){
             {   
                 ret = master_parse_body(text);
                 if(ret==GET_REQUEST){
-                    cout << "master_parse_body GET_REQUEST" << endl;
                     return do_request();
                 }
                 line_state = SLAVE_STATE_LINEOPEN;
@@ -342,13 +332,11 @@ bool http_conn::read_once(){
         if(read_bytes == -1 ){
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                cout << "errno == EAGAIN || errno == EWOULDBLOCK" << endl;
                 break;
             }
             return false;
         }
         if(read_bytes == 0){
-            cout << "read_bytes == 0" << endl;
             return false;
         }
         m_read_index += read_bytes;

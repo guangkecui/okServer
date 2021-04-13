@@ -8,7 +8,8 @@
         "sstream": "cpp",
         "new": "cpp",
         "functional": "cpp",
-        "queue": "cpp"
+        "queue": "cpp",
+        "unordered_map": "cpp"
     }
     
     

@@ -17,8 +17,9 @@
 #include <string>
 #include <sys/uio.h>
 #include <unordered_map>
-#include "./timer/timermanage.h"
+#include "../timer/timermanage.h"
 using std::string;
+class timerNode;
 class http_conn
 {
 public:

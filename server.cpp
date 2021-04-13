@@ -27,6 +27,8 @@ server::~server(){
     if(users!=nullptr){
         delete[] users;
     }
+    close(m_pipefd[0]);
+    close(m_pipefd[1]);
 }
 
 /*server初始化函数*/
@@ -71,6 +73,11 @@ void server::start_listen(){
     http_conn::addfd(m_epoolfd, m_listenfd);
 
     /*定时相关*/
+    ret = socketpair(PF_UNIX,SOCK_STREAM,0,m_pipefd);/*初始化信号管道*/
+    assert(ret != -1);
+    http_conn::setnoblock(m_pipefd[1]);
+    http_conn::addfd(m_epoolfd, m_pipefd[0]);
+    
     /*SIGPIPE信号：
     客户端异常关闭socket后，server收到FIN信号，如果此时server向client写数据，第一次会受到RST
     第二次会受到SIGPIPE，其默认是关闭当前进程，所以需要忽略*/
@@ -78,6 +85,7 @@ void server::start_listen(){
     m_timerManger.addsig(SIGALRM, m_timerManger.sig_hander); /*添加定时信号*/
     m_timerManger.addsig(SIGTERM, m_timerManger.sig_hander);/*终止进程信号*/
     alarm(m_timerManger.get_timerlot()); /*开启定时*/
+    timerManager::timer_pipefd = m_pipefd;
 }
 /*server主线程时间循环函数*/
 int server::event_loop(){
@@ -118,7 +126,7 @@ int server::event_loop(){
                 users[sockfd].http_close(); //关闭客户端连接
             }
             /*接收到信号*/
-            else if (sockfd == timerManager::timer_pipefd[0] && (m_events[i].events & EPOLLIN)){
+            else if (sockfd == m_pipefd[0] && (m_events[i].events & EPOLLIN)){
                 dealwith_sig(timeout, isStop);
             }
             /*接收到数据*/
@@ -178,7 +186,7 @@ int server::event_loop(){
 bool server::dealwith_sig(bool & timeout, bool & isServerStop){
     char sig[1024];
     int res = 0;
-    int ret = recv(timerManager::timer_pipefd[0], sig, sizeof(sig),0);
+    int ret = recv(m_pipefd[0], sig, sizeof(sig),0);
     if(ret==-1){
         cout << "server receive error signal" << endl;
         return false;

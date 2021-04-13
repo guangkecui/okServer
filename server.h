@@ -13,7 +13,8 @@ class server
 private:
     int m_port;//服务器监听的端口
     int m_epoolfd;//epool描述符
-    http_conn *users;//任务数组
+    int m_pipefd[2];//信号管道
+    http_conn *users;                    //任务数组
     threadpool<http_conn> *m_threadpool; //线程池
     int m_listenfd;//监听的socket描述符
     int m_thread_number;//线程池中线程个数
