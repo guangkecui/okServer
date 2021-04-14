@@ -112,7 +112,7 @@ private:
 
 public:
     static void setnoblock(int fd);
-    static void addfd(int epollfd, int fd, int isShot = false);
+    static void addfd(int epollfd, int fd, int isShot = false,bool ET = false);
     static void removefd(int epollfd, int fd);
     static void modfd(int epollfd, int fd, int old_option);
 public:

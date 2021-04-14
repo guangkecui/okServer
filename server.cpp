@@ -15,7 +15,14 @@ server::server()
 }
 
 server::~server(){
-    if(m_epoolfd!=-1){
+    if(users!=nullptr){
+        for (int i = 0; i < MAX_FD;++i){
+            users[i].http_close();
+        }
+        delete[] users;
+    }
+    if (m_epoolfd != -1)
+    {
         close(m_epoolfd);
     }
     if(m_listenfd){
@@ -24,11 +31,14 @@ server::~server(){
     if(m_threadpool!=nullptr){
         delete m_threadpool;
     }
-    if(users!=nullptr){
-        delete[] users;
+    
+    if(m_pipefd[0]!=0){
+        close(m_pipefd[0]);
     }
-    close(m_pipefd[0]);
-    close(m_pipefd[1]);
+    if(m_pipefd[1]!=0){
+        close(m_pipefd[1]);
+    }
+    
 }
 
 /*server初始化函数*/
@@ -70,7 +80,7 @@ void server::start_listen(){
     assert(m_epoolfd != -1);
     cout << "m_epoolfd = " << m_epoolfd << endl;
     http_conn::m_epollfd = m_epoolfd;
-    http_conn::addfd(m_epoolfd, m_listenfd);
+    http_conn::addfd(m_epoolfd, m_listenfd);/*listenFD最好为LT模式*/
 
     /*定时相关*/
     ret = socketpair(PF_UNIX,SOCK_STREAM,0,m_pipefd);/*初始化信号管道*/
@@ -114,15 +124,15 @@ int server::event_loop(){
                     cout << "server internal busy!" << endl;
                     continue;
                 }
-                cout << "server listen a new connect." << endl;
+                //cout << "server listen a new connect:"<< connfd << endl;
                 users[connfd].init(connfd, client_address);
-                m_timerManger.add_timer(&users[connfd]);/*向时间堆中添加定时器，并于http绑定*/
+                //m_timerManger.add_timer(&users[connfd]);/*向时间堆中添加定时器，并于http绑定*/
             }
             //EPOLLRDHUP:客户端关闭，发送FIN
             //EPOLLHUP:服务器段socket出错
             //EPOLLERR:读写出错
             else if(m_events[i].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)){
-                cout << "m_events[" << sockfd << "].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)" << endl;
+                //cout << "m_events[" << sockfd << "].events & (EPOLLRDHUP|EPOLLHUP|EPOLLERR)" << endl;
                 users[sockfd].http_close(); //关闭客户端连接
             }
             /*接收到信号*/
@@ -132,9 +142,10 @@ int server::event_loop(){
             /*接收到数据*/
             else if (m_events[i].events & (EPOLLIN))
             {
-                cout << "users[" << sockfd << "].read_once()" << endl;
+                //cout << "m_events[" << sockfd << "].events & EPOLLIN" << endl;
                 if (users[sockfd].read_once())
                 {
+                    //cout << "users[" << sockfd << "].read_once" << endl;
                     m_threadpool->append(&users[sockfd]);
                     m_timerManger.updata(users[sockfd].get_timer()); /*更新定时器*/
                 }
@@ -144,13 +155,14 @@ int server::event_loop(){
             }
             /*有数据要写*/
             else if(m_events[i].events & EPOLLOUT){
-                cout << "users[" << sockfd << "].write" << endl;
+                //cout << "m_events[" << sockfd << "].events & EPOLLOUT" << endl;
                 if(users[sockfd].write()){
-                    cout << "write successful" << endl;
+                    //cout << "m_events[" << sockfd << "] write successful" << endl;
+                    m_timerManger.updata(users[sockfd].get_timer()); /*更新定时器*/
                 }
                 else{
-
-                    cout << "close keep alive" << endl;
+                    //cout << sockfd << ": close" << endl;
+                    users[sockfd].http_close(); //关闭客户端连接
                 }
             }
             /*忽略其他事件*/

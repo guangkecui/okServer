@@ -69,20 +69,17 @@ void timerManager::del_timer(http_conn*http){
 
 /*定时器管理器循环函数*/
 void timerManager::handler(){
-    cout << "-----定时器时间到------" << endl;
     while (!timer_heap.empty())
     {
         timerNode_ptr curtimer = timer_heap.top();
         if(curtimer->isDelete()){
             timer_heap.pop();
-            cout << "删除socket " << curtimer->getHttp()->get_socket() << " 定时器删除" << endl;
             curtimer->getHttp()->unlinktimer();
             delete curtimer;
             curtimer = nullptr;
             
         }
         else if(curtimer->isExpeire()){
-            cout << "删除socket " << curtimer->getHttp()->get_socket() << " 定时器删除" << endl;
             curtimer->getHttp()->http_close();
             timer_heap.pop();
             delete curtimer;
@@ -92,7 +89,6 @@ void timerManager::handler(){
             break;
         }
     }
-    cout << "-----开始重新计时------" << endl;
     alarm(m_timerslot);/*重新定时*/
 }
 
@@ -113,22 +109,35 @@ void timerManager::addsig(int sig,void(sig_hander)(int)){
 }
 
 void timerManager::updata(timerNode_ptr timer){
-    cout << "-----更新定时器-------" << endl;
     stack<timerNode_ptr> timer_stack;
     while (!timer_heap.empty())
     {
         timerNode_ptr curtimer = timer_heap.top();
         timer_heap.pop();
-        timer_stack.push(curtimer);
         if(curtimer==timer){
+            timer_stack.push(curtimer);
             curtimer->updata();
             break;
         }
+        else if(curtimer->isDelete()){
+            curtimer->getHttp()->unlinktimer();
+            delete curtimer;
+            curtimer = nullptr;
+            
+        }
+        else if(curtimer->isExpeire()){
+            curtimer->getHttp()->http_close();
+            delete curtimer;
+            curtimer = nullptr;
+        }
+        else{
+            timer_stack.push(curtimer);
+        }
+        
     }
     while(!timer_stack.empty()){
         timerNode_ptr toptimer = timer_stack.top();
         timer_stack.pop();
         timer_heap.push(toptimer);
     }
-    cout << "-----更新定时器结束-------" << endl;
 }

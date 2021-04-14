@@ -27,16 +27,20 @@ void http_conn::setnoblock(int fd){
     fcntl(fd,F_SETFL,new_option);
 }
 
-/*向epollfd中添加监听的socket*/
-void http_conn::addfd(int epollfd,int fd,int isShot){
+/*向epollfd中添加监听的socket
+默认LT，*/
+void http_conn::addfd(int epollfd,int fd,int isShot,bool ET){
     epoll_event event;
     event.data.fd = fd;
     //EPOLLIN:有新联接或有数据到来，EPOLLRDHUP:对方是否关闭
     //EPOLLONESHOT:信号到达之后，除非重新调用eppol_ctl，否则不会再次唤醒线程，
     //保证一个socket被一个线程处理
-    event.events = EPOLLIN |EPOLLET | EPOLLRDHUP ;
+    event.events = EPOLLIN | EPOLLRDHUP ;
     if(isShot){
         event.events |= EPOLLONESHOT;
+    }
+    if(ET){
+        event.events |= EPOLLET;
     }
     epoll_ctl(epollfd,EPOLL_CTL_ADD,fd,&event);
     http_conn::setnoblock(fd);
@@ -53,14 +57,14 @@ void http_conn::removefd(int epollfd,int fd){
 void http_conn::modfd(int epollfd,int fd,int old_option){
     epoll_event event;
     event.data.fd = fd;
-    event.events = old_option | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
+    event.events = old_option| EPOLLONESHOT | EPOLLRDHUP;
     epoll_ctl(epollfd,EPOLL_CTL_MOD,fd,&event);
 }
 
 /*http关闭函数*/
 void http_conn::http_close(){
     if(m_sockfd!=-1){
-        cout << "close socketfd:" << m_sockfd << endl;
+        //cout << "close socketfd:" << m_sockfd << endl;
         removefd(m_epollfd,m_sockfd);
         m_sockfd = -1;
         m_user_count--;//连接数减1
@@ -79,8 +83,11 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     if(!m_name_password.count("123")){
         m_name_password["123"] = "123";
     }
-
-    addfd(m_epollfd, sockfd);
+    //cout << "addfd(" << sockfd<< ")" << endl;
+    addfd(m_epollfd,sockfd , 1, true); //connectfd为ET，oneshot
+    /*关闭sockfd的TIME——WAIT*/
+    int mReuseadress = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &mReuseadress, sizeof(mReuseadress));
     init();
 }   
 
@@ -98,6 +105,7 @@ void http_conn::process(){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
+    //cout << text << endl;
     m_url = strpbrk(text, " \t"); //在text中找到第一个空格的位置
     if (!m_url)
     {
@@ -125,7 +133,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
     m_version++;
     m_version += strspn(m_version, " \t"); //将mervison移动到不是\t的位置
 
-    if(strcasecmp(m_version,"HTTP/1.1")!=0){
+    if(strcasecmp(m_version,"HTTP/1.1")!=0&&strcasecmp(m_version,"HTTP/1.0")!=0){
         return BAD_REQUEST;
     }
 
@@ -149,6 +157,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
+    //cout << text << endl;
     /*处于请求头和请求体之间的空行，已被parse_line改成“\0\0”*/
     if(text[0] == '\0'){ 
         if(m_content_length!=0){
@@ -165,6 +174,9 @@ http_conn::REQUEST_RESULT http_conn::master_parse_header(char* text){
         text += strspn(text, " \t");
         if(strcasecmp(text,"keep-alive")==0){
             m_keep_alive = true;
+        }
+        else{
+            m_keep_alive = false;
         }
     }
     /*处理content-length*/
@@ -199,7 +211,7 @@ http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
 0:登陆  1：注册    2:注册确认; 3: 注册成功回到主页
 */
 http_conn::REQUEST_RESULT http_conn::do_request(){
-    if(strcmp(m_url,"/homepage.html")!=0){
+    if(strcmp(m_url,"/homepag.html")!=0){
         int index = (*(strrchr(m_url, '/')+1))-'0';
         switch (index)
         {
@@ -265,7 +277,7 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
         cout << "file open failed" << endl;
     }
     else{
-        cout << "file open successful" << endl;
+        
     }
     m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, filefd, 0);
     close(filefd);
@@ -486,14 +498,17 @@ bool http_conn::add_blankline(){
 bool http_conn::write(){
     int ret = 0;
     if(bytes_to_send==0){
+        //cout << m_sockfd << ":bytes_to_send==0,继续监听其输入" << endl;
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         init();
         return true;
     }
     while(true){
         ret = writev(m_sockfd, m_iv, m_iv_count);
+        //cout << m_sockfd << ":写入"<<ret<<"个byte" << endl;
         if(ret<0){
             if(errno==EAGAIN){
+                //cout << "writev errno = EAGAIN,modfd(" << m_sockfd << ")" << endl;
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
@@ -513,13 +528,16 @@ bool http_conn::write(){
         }
 
         if(bytes_to_send<=0){
+            //cout << "bytes_to_send<=0,modfd(" << m_sockfd << ")" << endl;
             unmap();
             modfd(m_epollfd, m_sockfd, EPOLLIN);
             if(m_keep_alive){
+                //cout << "m_keep_alive,init(" << m_sockfd << ")" << endl;
                 init();
                 return true;
             }
             else{
+                //cout << m_sockfd<< ":no keep_alive" << endl;
                 return false;
             }
         }
