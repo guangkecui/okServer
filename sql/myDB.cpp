@@ -1,7 +1,7 @@
 #include "myDB.h"
 #include <algorithm>// std::random_shuffle
 #include <math.h>
-
+#include <sstream>
 ProduceSurl::ProduceSurl(){
     codeLength = 6;//62^6 > 11位
     produceKeys(); //打乱字符串
@@ -11,6 +11,7 @@ ProduceSurl::ProduceSurl(){
     }
     long num = reconvert(sixtwo_s);//转化成10进制数
     maxLength = to_string(num).size();//10进制数的位数
+    cout << SeqKey << endl;
 }
 /*随机打乱字符串*/
 void ProduceSurl::produceKeys(){
@@ -25,7 +26,7 @@ string ProduceSurl::convert(long id){
         return string(1, k);
     }
     int y = (int)(id % 62);
-    int x = id / 62;
+    long x = id / 62;
     return convert(x) + SeqKey[y];
 }
 /*62进制转10进制，单纯转换*/
@@ -34,21 +35,76 @@ long ProduceSurl::reconvert(string num){
     int len = num.length();
     for (int i = len - 1; i >= 0;--i){
         int t = SeqKey.find(num[i]);
-        double s = (len - i) - 1;
-        long m = (long)(pow(62, s) * t);
+        int s = (len - i) - 1;
+        long m = (power(62, s) * t);
+        cout << "val=" <<val<< ", m= " << m << endl;
         val += m;
     }
     return val;
 }
 /*10进制转62进制，复杂转换*/
 string ProduceSurl::convert_complex(long id){
-
+    string id_s = to_string(id);//将long转换成string
+    if(id_s.length()>maxLength){
+        cout << "Error:id's length is" << id_s.length() << ",too max" << endl;
+        exit(1);
+    }
+    if(maxLength - id_s.length()>0){
+        id_s.insert(0, maxLength - id_s.length(),'0' );//将id_s的前面补0，补成11位；
+        cout << "id_s:"<<id_s << endl;
+    }
+    cout << "id_s:"<<id_s << endl;
+    reverse(id_s.begin(), id_s.end()); //翻转
+    cout << "id_s:"<<id_s << endl;
+    long newid = stol(id_s);//string转long
+    cout << "newid:"<<newid << endl;
+    string six = convert(newid);//10进制转62进制
+    cout << "six:"<<six << endl;
+    cout << "six size(): " << six.size() << endl;
+    if (codeLength > six.size())
+    {
+        six.insert(0, codeLength - six.size(), SeqKey.front());//62进制前面补0，补成6位
+    }
+    cout << "six:"<<six << endl;
+    return six;
 }
 /*62进制转10进制，复杂转换*/
 long ProduceSurl::reconvert_complex(string num){
-
+    if(num.length()>codeLength+1){
+        cout << "Error:num's length is" << num.length() << ",too max" << endl;
+        exit(1);
+    }
+    long ten_num = reconvert(num);//62进制转换成10进制
+    cout << "ten_num:" << ten_num << endl;
+    string ten_s = to_string(ten_num); //10进制数转换成字符串
+    cout << "ten_s:" << ten_s << endl;
+    if(maxLength - ten_s.length()>0){
+        ten_s.insert(0, maxLength - ten_s.length(),'0');//将ten_s的前面补0，补成11位；
+    }
+    cout << "ten_s:" << ten_s << endl;
+    reverse(ten_s.begin(), ten_s.end());//翻转
+    cout << "ten_s:" << ten_s << endl;
+    long newten = stol(ten_s);//string转long
+    cout << "newten:" << newten << endl;
+    return newten;
 }
 
+long ProduceSurl::stol(string str)
+{
+    long result;
+    istringstream is(str);
+    is >> result;
+    return result;
+}
+
+long ProduceSurl::power(int x,int n){
+    long res = 1;
+    for (int i = 0; i < n; ++i)
+    {
+        res *= x;
+    }
+    return res;
+}
 
 MyDB::MyDB(){
     mysql = mysql_init(nullptr);

@@ -27,6 +27,11 @@ public:
     string convert_complex(long id);
     /*62进制转10进制，复杂转换*/
     long reconvert_complex(string num);
+
+    /*string转long*/
+    long stol(string s);
+    /*x的n次方*/
+    long power(int x, int n);
 };
 
 class MyDB
@@ -43,7 +48,7 @@ private:
     ~MyDB();
 
 public:
-    
+    ProduceSurl m_produceurl;
     /*获取单例*/
     static MyDB& getInstance();
     /*链接mysql
