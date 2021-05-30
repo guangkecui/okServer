@@ -15,7 +15,7 @@ ProduceSurl::ProduceSurl(){
 }
 /*随机打乱字符串*/
 void ProduceSurl::produceKeys(){
-    string seqKey = "0123456789abcdefghigklmnopqrstuvwxyzABCDEFGHIGKLMNOPQRSTUVWXYZ";
+    string seqKey = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     std::random_shuffle(seqKey.begin(), seqKey.end());
     SeqKey = seqKey;
 }
@@ -37,7 +37,6 @@ long ProduceSurl::reconvert(string num){
         int t = SeqKey.find(num[i]);
         int s = (len - i) - 1;
         long m = (power(62, s) * t);
-        cout << "val=" <<val<< ", m= " << m << endl;
         val += m;
     }
     return val;
@@ -51,21 +50,14 @@ string ProduceSurl::convert_complex(long id){
     }
     if(maxLength - id_s.length()>0){
         id_s.insert(0, maxLength - id_s.length(),'0' );//将id_s的前面补0，补成11位；
-        cout << "id_s:"<<id_s << endl;
     }
-    cout << "id_s:"<<id_s << endl;
     reverse(id_s.begin(), id_s.end()); //翻转
-    cout << "id_s:"<<id_s << endl;
     long newid = stol(id_s);//string转long
-    cout << "newid:"<<newid << endl;
     string six = convert(newid);//10进制转62进制
-    cout << "six:"<<six << endl;
-    cout << "six size(): " << six.size() << endl;
     if (codeLength > six.size())
     {
         six.insert(0, codeLength - six.size(), SeqKey.front());//62进制前面补0，补成6位
     }
-    cout << "six:"<<six << endl;
     return six;
 }
 /*62进制转10进制，复杂转换*/
@@ -75,17 +67,12 @@ long ProduceSurl::reconvert_complex(string num){
         exit(1);
     }
     long ten_num = reconvert(num);//62进制转换成10进制
-    cout << "ten_num:" << ten_num << endl;
     string ten_s = to_string(ten_num); //10进制数转换成字符串
-    cout << "ten_s:" << ten_s << endl;
     if(maxLength - ten_s.length()>0){
         ten_s.insert(0, maxLength - ten_s.length(),'0');//将ten_s的前面补0，补成11位；
     }
-    cout << "ten_s:" << ten_s << endl;
     reverse(ten_s.begin(), ten_s.end());//翻转
-    cout << "ten_s:" << ten_s << endl;
     long newten = stol(ten_s);//string转long
-    cout << "newten:" << newten << endl;
     return newten;
 }
 
@@ -106,26 +93,25 @@ long ProduceSurl::power(int x,int n){
     return res;
 }
 
-MyDB::MyDB(){
+MyDB::MyDB(ProduceSurl* produceurl):m_produceurl(produceurl){
     mysql = mysql_init(nullptr);
     if(mysql==nullptr){
         cout << "Error:" << mysql_error(mysql) << endl;
         exit(1);
     }
+    cout << "gouzao" << endl;
 }
 
 MyDB::~MyDB(){
-    if(result!=nullptr){
-
-    }
+    
     if(mysql!=nullptr){
         mysql_close(mysql);
     }
 
 }
 
-MyDB& MyDB::getInstance(){
-    static MyDB local_db;
+MyDB& MyDB::getInstance(ProduceSurl* produceurl){
+    static MyDB local_db(produceurl);
     return local_db;
 }
 
@@ -190,11 +176,31 @@ long MyDB::lastId(){
     if (result != nullptr && mysql_num_rows(result) == 1 && mysql_num_fields(result) == 1)
     {
         ret = mysql_insert_id(mysql);//该方法用于获取刚刚插入数据的id,赋值给x
-        cout << "ret size:" << sizeof(ret) << endl;
     }
     return ret;
 }
 
-string MyDB::ten_converto_sixtwo(int id){
+string MyDB::insertLongUrl(string url){
+    long lastid = lastId();
+    lastid++;
+    string short_url = m_produceurl->convert_complex(lastid);
+    string state = "INSERT INTO shorturls (short_url,url,creat_time,lastModfication_time) VALUES('" +
+                   short_url + "','" +
+                   url + "'," +
+                   "now(),now());";
+    stateSQL(state);
+}
 
+string MyDB::getLongUrl(string short_url){
+    string ret = "";
+    long id = m_produceurl->reconvert_complex(short_url);
+    string id_s = to_string(id);
+    string state = "SELECT url FROM shorturls WHERE id = " + id_s + ";";
+    if(!stateSQL(state)){
+        cout << "Error:short_url: "<<short_url<<" has't been inserted in mysql;" << endl;
+        return ret;
+    }
+    row = mysql_fetch_row(result);
+    ret = row[0];
+    return ret;
 }

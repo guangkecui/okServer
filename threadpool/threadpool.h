@@ -6,6 +6,7 @@
 #include<pthread.h>
 #include<iostream>
 #include"../locker/locker.h"
+#include "../sql/sqlpool.h"
 
 #define M_THREAD_MAXNUMBER 15/*限制的线程池内线程的最大数量*/
 template < typename T>
@@ -19,12 +20,14 @@ private:
     locker m_queuelocker;/*互斥锁，访问队列时用到*/
     sem m_queuesem; /*信号量，队列中是否有任务需要处理*/
     bool m_stop;/*是否结束线程标志位*/
+    connection_pool *m_connPool;  //数据库连接池
+
     /*工作线程的任务执行函数，工作线程由此开始运行*/
     static void* worker(void* arg);
     /*线程池运行函数，被工作线程调用*/
     void run();
     /*构造函数设置成私有函数，防止外部初始化*/
-    threadpool(int thread_number,int max_requests);
+    threadpool(int thread_number,int max_requests,connection_pool* connPool）;  //数据库);
 public:
     /*单例模式获得线程池对象*/
     static threadpool<T>* getInstance(int thread_number,int max_requests);
@@ -35,9 +38,10 @@ public:
 };
 
 template < typename T>
-threadpool<T>::threadpool(int thread_number,int max_requests):
+threadpool<T>::threadpool(int thread_number,int max_requests,connection_pool *connPool):
                         m_thread_number(thread_number),
                         m_max_requests(max_requests),
+                        m_connPool(connPool),
                         m_stop(false),m_threads(nullptr)
 {
     std::cout<<"线程池构造"<<std::endl;
@@ -103,7 +107,12 @@ void threadpool<T>::run(void){
         if(!request){
             continue;
         }
-        request->process();
+        /*线程获取任务后，给这个任务分配一个sql连接*/
+        {
+            connectionRAII mysqlcon(&request->mysql, m_connPool);
+            request->process();
+        }
+        
     }
 }
 

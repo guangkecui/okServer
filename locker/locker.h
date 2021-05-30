@@ -17,6 +17,13 @@ public:
             throw std::exception();
         }
     }
+    sem(int num)
+    {
+        if (sem_init(&m_sem, 0, num) != 0)
+        {
+            throw std::exception();
+        }
+    }
     /*信号量析构函数*/
     ~sem(){
         sem_destroy(&m_sem);

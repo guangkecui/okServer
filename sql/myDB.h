@@ -41,16 +41,16 @@ private:
     MYSQL_RES *result;//指向查询结果的指针
     MYSQL_ROW row;//按行返回查询结果
     static MyDB myInstance;//单例对象
-    MyDB();
+    MyDB(ProduceSurl* produceurl);
     MyDB(const MyDB &) = delete;
     MyDB& operator=(const MyDB &) = delete;
 
     ~MyDB();
 
 public:
-    ProduceSurl m_produceurl;
+    ProduceSurl* m_produceurl;
     /*获取单例*/
-    static MyDB& getInstance();
+    static MyDB& getInstance(ProduceSurl* m_produceurl);
     /*链接mysql
     host:mysql的地址
     db_name:数据库名称*/
@@ -59,8 +59,10 @@ public:
     bool stateSQL(string sql);
     /*获取最新的主键id*/
     long lastId();
-    /*10进制转62进制*/
-    string ten_converto_sixtwo(int);
+    /*插入长链接,返回短链接*/
+    string insertLongUrl(string url);
+    /*根据短链接，返回长链接*/
+    string getLongUrl(string short_url);
 };
 
 #endif

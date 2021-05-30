@@ -249,6 +249,11 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
             m_targetfile_path.append("/welcome.html");
             break;
         }
+        case 4:{/*注测短链接地址*/
+            string long_url = process_getlongurl();//从请求体中获取长链接地址
+            //string short_url = process_registerURL(long_url);
+            return REGISTERED_SU_REQUEST;
+        }
         default:{
             m_targetfile_path.append(m_url);
             break;
@@ -422,6 +427,10 @@ bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
             return false;
         }
         break;}
+    case REGISTERED_SU_REQUEST:
+    {
+
+    }
     case FILE_REQUEST:
     {
         add_status_line(200, ok_200_title);
@@ -582,6 +591,8 @@ void http_conn::init(){
     m_iv_count = 2;
     bytes_to_send = 0;
     bytes_have_send = 0;
+
+    mysql = nullptr;
 }
 
 void http_conn::process_cgi(string &name, string &password){
@@ -626,3 +637,14 @@ bool http_conn::user_is_valid(int state,const string& name,const string& passwor
     }
     return false;/*存在未知的状态*/
 }
+
+string http_conn::process_getlongurl(){
+    char *index = m_string;
+    index = strchr(m_string, '=');
+    if(index!=NULL){
+        m_string = index + 1;
+    }
+    string ret(m_string);
+    return ret;
+}
+

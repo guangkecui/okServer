@@ -18,6 +18,7 @@
 #include <sys/uio.h>
 #include <unordered_map>
 #include "../timer/timermanage.h"
+#include "../sql/sqlpool.h"
 using std::string;
 class timerNode;
 class http_conn
@@ -49,6 +50,8 @@ public:
         NO_RESOURCE,/*没有此资源*/
         FORBIDDEN_REQUEST,/*禁止访问资源*/
         FILE_REQUEST,//请求获取一个文件
+        REGISTERED_SU_REQUEST,//注册短链接请求
+        REDIRECT_REQUEST,//获取长链接，重定向请求
         INTERNAL_ERROR,/*服务器内部错误*/
         CLOSE_CONNECTION/*关闭连接*/
     };
@@ -67,6 +70,9 @@ public:
 public:
     static int m_epollfd;
     static int m_user_count;
+    /*数据库连接*/
+    MYSQL *mysql;
+
 private:
     int m_sockfd;//套接字
     sockaddr_in m_address;
@@ -109,6 +115,7 @@ private:
     std::unordered_map<string, string> m_name_password;
     /*绑定的定时器*/
     timerNode *m_timer;                                                                               
+    
 
 public:
     static void setnoblock(int fd);
@@ -177,7 +184,10 @@ private:
     void process_cgi(string &name, string &password);
     /*判断用户名-密码是否有效*/
     bool user_is_valid(int state,const string& name,const string& password);
-
+    /*从请求体中获取长链接*/
+    string process_getlongurl();
+    /*注册长链接，返回短链接*/
+    string process_registerURL(string long_url);
 };
 
 #endif
