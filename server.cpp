@@ -11,7 +11,15 @@ server::server()
     m_thread_number = 0;
     m_listenfd = -1;
     users = new http_conn[MAX_FD];
-    
+    m_db = MyDB::getInstance(new ProduceSurl());//获取数据库操作类单例
+    m_sqlpool = connection_pool::GetInstance();//获取数据库连接池类单例
+    m_sqlpool->init("localhost", "root", "123456", "myserver",3306,4);//对数据库连接池初始化
+    {
+        //从数据库连接池中获取一个链接，对获取数据库的初始自增id；
+        MYSQL *mysql = nullptr;
+        connectionRAII mysqlcon(&mysql, m_sqlpool);
+        m_db->initID(mysql);
+    }
 }
 
 server::~server(){
@@ -45,13 +53,14 @@ server::~server(){
 void server::init(int port, int threadnum){
     m_port = port;
     m_thread_number = threadnum;
-    threadpool_init(m_thread_number, MAX_FD);
+    
+    threadpool_init(m_thread_number, MAX_FD, m_sqlpool);
 }
 
 /*线程池初始化函数*/
-void server::threadpool_init(int threadnum, int max_request_number){
+void server::threadpool_init(int threadnum, int max_request_number,connection_pool* connPool){
     /*单例模式获取线程池指针*/
-    m_threadpool = threadpool<http_conn>::getInstance(threadnum, max_request_number);
+    m_threadpool = threadpool<http_conn>::getInstance(threadnum, max_request_number,connPool);
 }
 
 /*开始监听*/
@@ -125,7 +134,7 @@ int server::event_loop(){
                     continue;
                 }
                 //cout << "server listen a new connect:"<< connfd << endl;
-                users[connfd].init(connfd, client_address);
+                users[connfd].init(connfd, client_address,m_db);
                 //m_timerManger.add_timer(&users[connfd]);/*向时间堆中添加定时器，并于http绑定*/
             }
             //EPOLLRDHUP:客户端关闭，发送FIN

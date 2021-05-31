@@ -27,10 +27,10 @@ private:
     /*线程池运行函数，被工作线程调用*/
     void run();
     /*构造函数设置成私有函数，防止外部初始化*/
-    threadpool(int thread_number,int max_requests,connection_pool* connPool）;  //数据库);
+    threadpool(int thread_number,int max_requests,connection_pool* connPool);  //数据库);
 public:
     /*单例模式获得线程池对象*/
-    static threadpool<T>* getInstance(int thread_number,int max_requests);
+    static threadpool<T>* getInstance(int thread_number,int max_requests,connection_pool* connPool);
     ~threadpool();
     /*往任务请求队列中插入任务*/
     bool append(T* request);
@@ -125,9 +125,9 @@ void* threadpool<T>::worker(void* arg){
 }
 
 template<typename T>
-threadpool<T>* threadpool<T>::getInstance(int thread_number, int max_requests){
+threadpool<T>* threadpool<T>::getInstance(int thread_number, int max_requests,connection_pool *connPool){
     /*静态局部变量，返回构造单例*/
-    static  threadpool<T> m_threadpool_local( thread_number, max_requests);
+    static  threadpool<T> m_threadpool_local( thread_number, max_requests,connPool);
     return &m_threadpool_local;
 }
 

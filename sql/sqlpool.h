@@ -13,7 +13,7 @@ public:
 	bool ReleaseConnection(MYSQL *conn); //释放连接
 	int GetFreeConn();					 //获取连接
 	void DestroyPool();					 //销毁所有连接
-
+	
 	//单例模式
 	static connection_pool *GetInstance();
 

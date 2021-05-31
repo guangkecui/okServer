@@ -94,28 +94,22 @@ long ProduceSurl::power(int x,int n){
 }
 
 MyDB::MyDB(ProduceSurl* produceurl):m_produceurl(produceurl){
-    mysql = mysql_init(nullptr);
-    if(mysql==nullptr){
-        cout << "Error:" << mysql_error(mysql) << endl;
-        exit(1);
-    }
-    cout << "gouzao" << endl;
+    m_id = 0;
 }
 
 MyDB::~MyDB(){
-    
-    if(mysql!=nullptr){
-        mysql_close(mysql);
+    if(m_produceurl!=nullptr){
+        delete m_produceurl;
+        m_produceurl = nullptr;
     }
-
 }
 
-MyDB& MyDB::getInstance(ProduceSurl* produceurl){
+MyDB* MyDB::getInstance(ProduceSurl* produceurl){
     static MyDB local_db(produceurl);
-    return local_db;
+    return &local_db;
 }
 
-bool MyDB::initDB(string host, string user, string pwd, string db_name){
+bool MyDB::initDB(MYSQL* mysql,string host, string user, string pwd, string db_name){
     // 函数mysql_real_connect建立一个数据库连接  
     // 成功返回MYSQL*连接句柄，失败返回NULL  
     mysql = mysql_real_connect(mysql, host.c_str(), user.c_str(), pwd.c_str(), db_name.c_str(), 0, NULL, 0);  
@@ -127,11 +121,12 @@ bool MyDB::initDB(string host, string user, string pwd, string db_name){
     return true; 
 }
 
-bool MyDB::stateSQL(string sql){
+MYSQL_RES* MyDB::stateSQL(MYSQL* mysql,string sql){
+    MYSQL_RES *result = nullptr;
     if (mysql_query(mysql,sql.c_str()))
     {
         cout<<"Query Error: "<<mysql_error(mysql);
-        return false;
+        return nullptr;
     }
     else // 查询成功
     {
@@ -163,44 +158,59 @@ bool MyDB::stateSQL(string sql){
             else // error
             {
                 cout<<"Get result error: "<<mysql_error(mysql);
-                return false;
+                return nullptr;
             }
         }
     }
 
-    return true;
+    return result;
 }
 long MyDB::lastId(){
-    stateSQL("SELECT LAST_INSERT_ID();");//获取自增ID，存储在result中
-    long ret = -1;
-    if (result != nullptr && mysql_num_rows(result) == 1 && mysql_num_fields(result) == 1)
-    {
-        ret = mysql_insert_id(mysql);//该方法用于获取刚刚插入数据的id,赋值给x
-    }
+    long ret;
+    m_lock.lock();
+    m_id++;
+    ret = m_id;
+    m_lock.unlock();
     return ret;
 }
 
-string MyDB::insertLongUrl(string url){
+string MyDB::insertLongUrl(MYSQL* mysql,string url){
     long lastid = lastId();
-    lastid++;
+    cout << "lasrid = " << lastid << endl;
     string short_url = m_produceurl->convert_complex(lastid);
-    string state = "INSERT INTO shorturls (short_url,url,creat_time,lastModfication_time) VALUES('" +
+    string lastid_s = to_string(lastid);
+    string state = "INSERT INTO shorturls (short_url,url,creat_time,lastModfication_time) VALUES('"+
+                    //lastid_s+ ",'" +
                    short_url + "','" +
                    url + "'," +
                    "now(),now());";
-    stateSQL(state);
+    stateSQL(mysql, state);
+    return short_url;
 }
 
-string MyDB::getLongUrl(string short_url){
+string MyDB::getLongUrl(MYSQL* mysql,string short_url){
     string ret = "";
     long id = m_produceurl->reconvert_complex(short_url);
     string id_s = to_string(id);
     string state = "SELECT url FROM shorturls WHERE id = " + id_s + ";";
-    if(!stateSQL(state)){
+    MYSQL_RES *result = stateSQL(mysql, state);
+    if (result==nullptr)
+    {
         cout << "Error:short_url: "<<short_url<<" has't been inserted in mysql;" << endl;
         return ret;
     }
-    row = mysql_fetch_row(result);
+    MYSQL_ROW row = mysql_fetch_row(result);
     ret = row[0];
     return ret;
+}
+
+bool MyDB::initID(MYSQL *mysql){
+    MYSQL_RES *result  = stateSQL(mysql,"SELECT Max(id) from shorturls;");//获取自增ID，存储在result中
+    if (result != nullptr && mysql_num_rows(result) == 1 && mysql_num_fields(result) == 1)
+    {
+        MYSQL_ROW row = mysql_fetch_row(result); //该方法用于获取刚刚插入数据的id,赋值给x
+        m_id = stol(row[0]);
+        return true;
+    }
+    return false;
 }

@@ -3,6 +3,7 @@
 #include "./http_conn/http_conn.h"
 #include "./threadpool/threadpool.h"
 #include "./timer/timermanage.h"
+
 #define READ_EVENT 0;
 #define WRITE_EVENT 1;
 const int MAX_FD = 65535;           //最大文件描述符
@@ -19,12 +20,14 @@ private:
     int m_listenfd;//监听的socket描述符
     int m_thread_number;//线程池中线程个数
     timerManager m_timerManger;//定时器管理器
+    MyDB *m_db;//数据库操作类
+    connection_pool *m_sqlpool;//数据库连接池指针
 
 public:
     server();
     ~server();
     void init(int port, int threadnum);
-    void threadpool_init(int threadnum, int max_request_number);
+    void threadpool_init(int threadnum, int max_request_number,connection_pool* connPool);
     void start_listen();
     bool dealwith_sig(bool & timeout, bool & isServerStop);/*处理epoll受到的信号*/
     int event_loop();

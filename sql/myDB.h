@@ -3,7 +3,7 @@
 #include<iostream>
 #include<string>
 #include<mysql/mysql.h>
-
+#include "../locker/locker.h"
 using namespace std;
 
 /*生成短链接类*/
@@ -13,7 +13,6 @@ private:
     string SeqKey;
     int codeLength;//短码的最大长度
     int maxLength;//id转化成字符串的最大长度，及codeLength个SeqKey[61]转化成数字的最大长度
-
 
 public:
     ProduceSurl();
@@ -34,35 +33,40 @@ public:
     long power(int x, int n);
 };
 
+
+/*数据库操作类*/
 class MyDB
 {
 private:
-    MYSQL *mysql;//链接mysql的指针
-    MYSQL_RES *result;//指向查询结果的指针
-    MYSQL_ROW row;//按行返回查询结果
-    static MyDB myInstance;//单例对象
+    //MYSQL *mysql;//链接mysql的指针
+    //MYSQL_RES *result;//指向查询结果的指针
+    //MYSQL_ROW row;//按行返回查询结果
     MyDB(ProduceSurl* produceurl);
     MyDB(const MyDB &) = delete;
     MyDB& operator=(const MyDB &) = delete;
-
     ~MyDB();
+
+    long m_id;
+    locker m_lock;
 
 public:
     ProduceSurl* m_produceurl;
     /*获取单例*/
-    static MyDB& getInstance(ProduceSurl* m_produceurl);
+    static MyDB* getInstance(ProduceSurl* m_produceurl);
     /*链接mysql
     host:mysql的地址
     db_name:数据库名称*/
-    bool initDB(string host, string user, string pwd, string db_name);
+    bool initDB(MYSQL* mysql,string host, string user, string pwd, string db_name);
     /*执行sql语句*/
-    bool stateSQL(string sql);
+    MYSQL_RES* stateSQL(MYSQL* mysql,string sql);
     /*获取最新的主键id*/
     long lastId();
     /*插入长链接,返回短链接*/
-    string insertLongUrl(string url);
+    string insertLongUrl(MYSQL* mysql,string url);
     /*根据短链接，返回长链接*/
-    string getLongUrl(string short_url);
+    string getLongUrl(MYSQL* mysql,string short_url);
+    /*初始化id*/
+    bool initID(MYSQL *mysql);
 };
 
 #endif

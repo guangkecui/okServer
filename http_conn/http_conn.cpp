@@ -11,6 +11,8 @@ int http_conn::m_user_count = 0;//静态变量初始化，
 
 //定义http响应的一些状态信息
 const string ok_200_title = "OK";
+const string redirect_302_form = "Your request was redirected to another address";
+const string redirect_302_title = "Redirected";
 const string error_400_title = "Bad Request";
 const string error_400_form = "Your request has bad syntax or is inherently impossible to staisfy.\n";
 const string error_403_title = "Forbidden";
@@ -75,7 +77,7 @@ void http_conn::http_close(){
     unlinktimer();
 }
 
-void http_conn::init(int sockfd,const sockaddr_in& addr){
+void http_conn::init(int sockfd,const sockaddr_in& addr,MyDB* db){
     m_sockfd = sockfd;
     m_address = addr;
     m_user_count++;
@@ -83,6 +85,7 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
     if(!m_name_password.count("123")){
         m_name_password["123"] = "123";
     }
+    operateDB = db;
     //cout << "addfd(" << sockfd<< ")" << endl;
     addfd(m_epollfd,sockfd , 1, true); //connectfd为ET，oneshot
     /*关闭sockfd的TIME——WAIT*/
@@ -93,7 +96,9 @@ void http_conn::init(int sockfd,const sockaddr_in& addr){
 
 void http_conn::process(){
     REQUEST_RESULT read_ret = process_read();
-    if(read_ret == NO_REQUEST){
+    cout << "read_ret = " << read_ret << endl;
+    if (read_ret == NO_REQUEST)
+    {
         http_conn::modfd(m_epollfd,m_sockfd,EPOLLIN);
         return;
     }
@@ -105,7 +110,6 @@ void http_conn::process(){
 }
 
 http_conn::REQUEST_RESULT http_conn::master_parse_line(char* text){
-    //cout << text << endl;
     m_url = strpbrk(text, " \t"); //在text中找到第一个空格的位置
     if (!m_url)
     {
@@ -211,7 +215,25 @@ http_conn::REQUEST_RESULT http_conn::master_parse_body(char* text){
 0:登陆  1：注册    2:注册确认; 3: 注册成功回到主页
 */
 http_conn::REQUEST_RESULT http_conn::do_request(){
-    if(strcmp(m_url,"/homepag.html")!=0){
+    
+    if (strcmp(m_url, "/homepage.html") != 0)
+    {
+        string url_buff = string(m_url);
+        url_buff.erase(0,1);//删除头部的‘/’
+        std::size_t found_xiegang = url_buff.find('/');
+        std::size_t found_dian = url_buff.find('.');
+        /*若url里不存在‘/’和‘.’，并且长度为6或7，则认为是短链接*/
+        if ((url_buff.size() == 6||url_buff.size() == 7)&&
+            found_xiegang==string::npos&&
+            found_dian==string::npos)
+        {
+            /*则认为是短链接请求*/
+            m_short_url = url_buff;
+            cout << "request m_short_url:" << m_short_url << endl;
+            return REDIRECT_REQUEST; //返回重定向请求
+        }
+
+        /*单纯的网页按键请求*/
         int index = (*(strrchr(m_url, '/')+1))-'0';
         switch (index)
         {
@@ -251,8 +273,14 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
         }
         case 4:{/*注测短链接地址*/
             string long_url = process_getlongurl();//从请求体中获取长链接地址
-            //string short_url = process_registerURL(long_url);
-            return REGISTERED_SU_REQUEST;
+            cout << "long_url:" << long_url << endl;
+            /*调用db操作类，注册长链接，返回短链接*/
+            m_short_url = operateDB->insertLongUrl(mysql, long_url);
+            cout << "m_short_url:" << m_short_url << endl;
+            if(m_short_url!=""){
+                return REGISTERED_SU_REQUEST;//注册成功
+            }
+            return BAD_REQUEST;
         }
         default:{
             m_targetfile_path.append(m_url);
@@ -429,7 +457,23 @@ bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
         break;}
     case REGISTERED_SU_REQUEST:
     {
-
+        add_status_line(200, ok_200_title);
+        string hostadress = "127.0.0.1:6969/";
+        string readysend = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>短链接</title></head><body>"+hostadress+m_short_url+"</body></html>";
+        add_header(readysend.size());
+        if(!add_body(readysend.data())){
+            return false;
+        }
+        cout << "send data:" << readysend << endl;
+        break;
+    }
+    case REDIRECT_REQUEST:
+    {
+        m_long_url = operateDB->getLongUrl(mysql, m_short_url);
+        cout << "request m_long_url:" << m_long_url << endl;
+        add_status_line(302, redirect_302_form);
+        add_header(0, m_long_url);
+        break;
     }
     case FILE_REQUEST:
     {
@@ -461,6 +505,7 @@ bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
     m_iv[0].iov_base = m_write_buff;
     m_iv[0].iov_len = m_write_index;
     m_iv_count = 1;
+    bytes_to_send = m_write_index;
     return true;
 }
 
@@ -483,12 +528,17 @@ bool http_conn::add_status_line(int status_code, const string &status_discrip){
     return add_response("%s %d %s\r\n", "HTTP/1.1", 200, status_discrip.data());
 }
 
-bool http_conn::add_header(int content_len){
+bool http_conn::add_header(int content_len,string redirect_adress){
     if(!add_response("Content-Length: %d\r\n",content_len)){
         return false;
     }
     if(!add_response("Connection: %s\r\n",(m_keep_alive==true?"keep-alive":"close"))){
         return false;
+    }
+    if(redirect_adress!=""){
+        if(!add_response("Location: %s\r\n",m_long_url)){
+            return false;
+        }
     }
     if(!add_blankline()){
         return false;
@@ -506,18 +556,20 @@ bool http_conn::add_blankline(){
 
 bool http_conn::write(){
     int ret = 0;
-    if(bytes_to_send==0){
-        //cout << m_sockfd << ":bytes_to_send==0,继续监听其输入" << endl;
+    cout << "bytes_to_send:" << bytes_to_send << endl;
+    if (bytes_to_send == 0)
+    {
+        cout << m_sockfd << ":bytes_to_send==0,继续监听其输入" << endl;
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         init();
         return true;
     }
     while(true){
         ret = writev(m_sockfd, m_iv, m_iv_count);
-        //cout << m_sockfd << ":写入"<<ret<<"个byte" << endl;
+        cout << m_sockfd << ":写入"<<ret<<"个byte" << endl;
         if(ret<0){
             if(errno==EAGAIN){
-                //cout << "writev errno = EAGAIN,modfd(" << m_sockfd << ")" << endl;
+                cout << "writev errno = EAGAIN,modfd(" << m_sockfd << ")" << endl;
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
@@ -527,9 +579,11 @@ bool http_conn::write(){
         bytes_have_send += ret;
         bytes_to_send -= ret;
         if(bytes_have_send>=m_iv[0].iov_len){
-            m_iv[0].iov_len = 0;
-            m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_index);
-            m_iv[1].iov_len = bytes_to_send;
+            if(m_iv_count==2){
+                m_iv[0].iov_len = 0;
+                m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_index);
+                m_iv[1].iov_len = bytes_to_send;
+            }
         }
         else{
             m_iv[0].iov_base = m_write_buff + bytes_have_send;
@@ -537,16 +591,16 @@ bool http_conn::write(){
         }
 
         if(bytes_to_send<=0){
-            //cout << "bytes_to_send<=0,modfd(" << m_sockfd << ")" << endl;
+            cout << "bytes_to_send<=0,modfd(" << m_sockfd << ")" << endl;
             unmap();
             modfd(m_epollfd, m_sockfd, EPOLLIN);
             if(m_keep_alive){
-                //cout << "m_keep_alive,init(" << m_sockfd << ")" << endl;
+                cout << "m_keep_alive,init(" << m_sockfd << ")" << endl;
                 init();
                 return true;
             }
             else{
-                //cout << m_sockfd<< ":no keep_alive" << endl;
+                cout << m_sockfd<< ":no keep_alive" << endl;
                 return false;
             }
         }
@@ -596,22 +650,30 @@ void http_conn::init(){
 }
 
 void http_conn::process_cgi(string &name, string &password){
-    char *index = m_string;
-    index = strchr(m_string, '=');
-    if(index!=NULL){
-        m_string = index + 1;
+    string index = string(m_string);
+    size_t found = index.find_first_of('=');
+    if(found != string::npos&&index.substr(0, found)=="u"){
+        int u = found + 1;
+        found = index.find_first_of('&');
+        if(found!=string::npos){
+            name = index.substr(u, found - u);
+        }
+        else{
+            return;
+        }
     }
-    index = strchr(m_string, '&');
-    if(index!=NULL){
-        *index = '\0';
+    else{
+        return;
     }
-    name.append(m_string);
-    index++;
-    index = strchr(m_string, '=');
-    if(index!=NULL){
-        m_string = index + 1;
+    int p = found + 1;
+    found = index.find_last_of('=');
+    if(found!=string::npos&&index.substr(p,found-p)=="p"){
+        p = found + 1;
+        password = index.substr(p, index.size() - p);
     }
-    password.append(m_string);
+    else{
+        return;
+    }
 }
 
 bool http_conn::user_is_valid(int state,const string& name,const string& password){
@@ -639,12 +701,13 @@ bool http_conn::user_is_valid(int state,const string& name,const string& passwor
 }
 
 string http_conn::process_getlongurl(){
-    char *index = m_string;
-    index = strchr(m_string, '=');
-    if(index!=NULL){
-        m_string = index + 1;
+    string ret = "";
+    string index = string(m_string);
+    size_t found = index.find_first_of('=');
+    if(found!=string::npos && index.substr(0,found)=="longurl"){
+        int u = found + 1;
+        ret = index.substr(u, index.size() - u);
     }
-    string ret(m_string);
     return ret;
 }
 

@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include "../timer/timermanage.h"
 #include "../sql/sqlpool.h"
+#include "../sql/myDB.h"
 using std::string;
 class timerNode;
 class http_conn
@@ -72,6 +73,7 @@ public:
     static int m_user_count;
     /*数据库连接*/
     MYSQL *mysql;
+    MyDB *operateDB;//数据库操作类
 
 private:
     int m_sockfd;//套接字
@@ -94,7 +96,8 @@ private:
     int m_keep_alive;//是否保持连结
     char *m_host;//主机地址
     char *m_string;//存储请求体数据
-
+    string m_short_url;//暂时存储短链接
+    string m_long_url;//暂时存储长链接
     /*请求的目标文件的全路径*/
     string m_targetfile_path;
     /*目标文件的状态，是否存在，是否为目录，是否可读，文件大小等*/
@@ -126,7 +129,7 @@ public:
     http_conn(){}
     ~http_conn(){}
     /*http类初始化函数*/
-    void init(int sockfd,const sockaddr_in& addr);
+    void init(int sockfd,const sockaddr_in& addr,MyDB* db);
     /*http类关闭函数*/
     void http_close();
     /*工作线程的工作函数*/
@@ -166,7 +169,7 @@ private:
     /*向http响应报文中添加状态码和状态描述*/
     bool add_status_line(int status_code, const string &status_discrip);
     /*向http响应报文中添加头部信息*/
-    bool add_header(int content_len);
+    bool add_header(int content_len,string redirect_adress = "");
     /*向http响应报文中添加响应体*/
     bool add_body(const char* body);
     /*向http响应报文中添加响应*/
@@ -186,8 +189,9 @@ private:
     bool user_is_valid(int state,const string& name,const string& password);
     /*从请求体中获取长链接*/
     string process_getlongurl();
-    /*注册长链接，返回短链接*/
-    string process_registerURL(string long_url);
+
+    /********************************数据库操作函数***************************************/
+
 };
 
 #endif
