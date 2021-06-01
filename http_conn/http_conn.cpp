@@ -12,7 +12,7 @@ int http_conn::m_user_count = 0;//静态变量初始化，
 //定义http响应的一些状态信息
 const string ok_200_title = "OK";
 const string redirect_302_form = "Your request was redirected to another address";
-const string redirect_302_title = "Redirected";
+const string redirect_302_title = "Found";
 const string error_400_title = "Bad Request";
 const string error_400_form = "Your request has bad syntax or is inherently impossible to staisfy.\n";
 const string error_403_title = "Forbidden";
@@ -96,7 +96,6 @@ void http_conn::init(int sockfd,const sockaddr_in& addr,MyDB* db){
 
 void http_conn::process(){
     REQUEST_RESULT read_ret = process_read();
-    cout << "read_ret = " << read_ret << endl;
     if (read_ret == NO_REQUEST)
     {
         http_conn::modfd(m_epollfd,m_sockfd,EPOLLIN);
@@ -229,7 +228,6 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
         {
             /*则认为是短链接请求*/
             m_short_url = url_buff;
-            cout << "request m_short_url:" << m_short_url << endl;
             return REDIRECT_REQUEST; //返回重定向请求
         }
 
@@ -272,11 +270,17 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
             break;
         }
         case 4:{/*注测短链接地址*/
-            string long_url = process_getlongurl();//从请求体中获取长链接地址
-            cout << "long_url:" << long_url << endl;
+            m_long_url = process_getlongurl();//从请求体中获取长链接地址
             /*调用db操作类，注册长链接，返回短链接*/
-            m_short_url = operateDB->insertLongUrl(mysql, long_url);
-            cout << "m_short_url:" << m_short_url << endl;
+            string shorturl_buff = operateDB->is_insertLongUrl(mysql, m_long_url);
+            if(shorturl_buff==""){
+                cout << m_long_url<<",长链接未注册" << endl;
+                m_short_url = operateDB->insertLongUrl(mysql, m_long_url);
+            }
+            else{
+                cout << m_long_url<<",长链接已注册" << endl;
+                m_short_url = shorturl_buff;
+            }
             if(m_short_url!=""){
                 return REGISTERED_SU_REQUEST;//注册成功
             }
@@ -464,15 +468,17 @@ bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
         if(!add_body(readysend.data())){
             return false;
         }
-        cout << "send data:" << readysend << endl;
+        cout << "注册短链接->长链接：" << m_long_url << " ->短链接：" << m_short_url << endl;
         break;
     }
     case REDIRECT_REQUEST:
     {
         m_long_url = operateDB->getLongUrl(mysql, m_short_url);
-        cout << "request m_long_url:" << m_long_url << endl;
-        add_status_line(302, redirect_302_form);
-        add_header(0, m_long_url);
+        m_keep_alive = false;
+        add_status_line(302, redirect_302_title);
+        string rederect_address = "http://" + m_long_url;
+        cout << "获取长链接->短链接：" << m_short_url << " ->长链接：" << rederect_address << endl;
+        add_header(0, rederect_address);
         break;
     }
     case FILE_REQUEST:
@@ -525,7 +531,7 @@ bool http_conn::add_response(const char* format, ...){
 }
 
 bool http_conn::add_status_line(int status_code, const string &status_discrip){
-    return add_response("%s %d %s\r\n", "HTTP/1.1", 200, status_discrip.data());
+    return add_response("%s %d %s\r\n", "HTTP/1.1", status_code, status_discrip.data());
 }
 
 bool http_conn::add_header(int content_len,string redirect_adress){
@@ -536,7 +542,8 @@ bool http_conn::add_header(int content_len,string redirect_adress){
         return false;
     }
     if(redirect_adress!=""){
-        if(!add_response("Location: %s\r\n",m_long_url)){
+        if(!add_response("Location: %s\r\n",redirect_adress.data())){
+           
             return false;
         }
     }
@@ -556,20 +563,19 @@ bool http_conn::add_blankline(){
 
 bool http_conn::write(){
     int ret = 0;
-    cout << "bytes_to_send:" << bytes_to_send << endl;
     if (bytes_to_send == 0)
     {
-        cout << m_sockfd << ":bytes_to_send==0,继续监听其输入" << endl;
+        //cout << m_sockfd << ":bytes_to_send==0,继续监听其输入" << endl;
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         init();
         return true;
     }
     while(true){
         ret = writev(m_sockfd, m_iv, m_iv_count);
-        cout << m_sockfd << ":写入"<<ret<<"个byte" << endl;
+        //cout << m_sockfd << ":写入"<<ret<<"个byte" << endl;
         if(ret<0){
             if(errno==EAGAIN){
-                cout << "writev errno = EAGAIN,modfd(" << m_sockfd << ")" << endl;
+                //cout << "writev errno = EAGAIN,modfd(" << m_sockfd << ")" << endl;
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
@@ -591,16 +597,16 @@ bool http_conn::write(){
         }
 
         if(bytes_to_send<=0){
-            cout << "bytes_to_send<=0,modfd(" << m_sockfd << ")" << endl;
+            //cout << "bytes_to_send<=0,modfd(" << m_sockfd << ")" << endl;
             unmap();
             modfd(m_epollfd, m_sockfd, EPOLLIN);
             if(m_keep_alive){
-                cout << "m_keep_alive,init(" << m_sockfd << ")" << endl;
+                //cout << "m_keep_alive,init(" << m_sockfd << ")" << endl;
                 init();
                 return true;
             }
             else{
-                cout << m_sockfd<< ":no keep_alive" << endl;
+                //cout << m_sockfd<< ":no keep_alive" << endl;
                 return false;
             }
         }

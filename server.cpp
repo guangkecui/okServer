@@ -13,12 +13,17 @@ server::server()
     users = new http_conn[MAX_FD];
     m_db = MyDB::getInstance(new ProduceSurl());//获取数据库操作类单例
     m_sqlpool = connection_pool::GetInstance();//获取数据库连接池类单例
-    m_sqlpool->init("localhost", "root", "123456", "myserver",3306,4);//对数据库连接池初始化
+   
+    m_sqlpool->init("localhost", "root", "123456", "myserver", 3306, 4); //对数据库连接池初始化
     {
+         
         //从数据库连接池中获取一个链接，对获取数据库的初始自增id；
         MYSQL *mysql = nullptr;
         connectionRAII mysqlcon(&mysql, m_sqlpool);
-        m_db->initID(mysql);
+        if(!m_db->initID(mysql)){
+            cout << "Error:First id get failed." << endl;
+            exit(1);
+        }
     }
 }
 

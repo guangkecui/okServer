@@ -178,16 +178,19 @@ string MyDB::insertLongUrl(MYSQL* mysql,string url){
     long lastid = lastId();
     cout << "lasrid = " << lastid << endl;
     string short_url = m_produceurl->convert_complex(lastid);
+    string longurl_hash = to_string(mmhash(url));//获取长链接的hash值
     string lastid_s = to_string(lastid);
-    string state = "INSERT INTO shorturls (short_url,url,creat_time,lastModfication_time) VALUES('"+
+    string state = "INSERT INTO shorturls (short_url,url,creat_time,lastModfication_time,urlhash) VALUES('"+
                     //lastid_s+ ",'" +
                    short_url + "','" +
                    url + "'," +
-                   "now(),now());";
+                   "now(),now(),"+
+                   longurl_hash+");";
     stateSQL(mysql, state);
     return short_url;
 }
 
+/*通过id获取短链接*/
 string MyDB::getLongUrl(MYSQL* mysql,string short_url){
     string ret = "";
     long id = m_produceurl->reconvert_complex(short_url);
@@ -204,13 +207,45 @@ string MyDB::getLongUrl(MYSQL* mysql,string short_url){
     return ret;
 }
 
+string MyDB::is_insertLongUrl(MYSQL *mysql, string longurl){
+    string ret = "";
+    string longurl_hash = to_string(mmhash(longurl)); //获取长链接的hash值
+    string state = "SELECT short_url FROM shorturls WHERE urlhash = " + longurl_hash + ";";
+    MYSQL_RES *result = stateSQL(mysql, state);
+    if (result==nullptr)
+    {
+        cout << "Error:short_url: "<<longurl<<" has't been inserted in mysql;" << endl;
+        return ret;
+    }
+    MYSQL_ROW row = mysql_fetch_row(result);
+    if ((row != nullptr) && (*row != nullptr))
+    {
+        ret = row[0];
+    }
+    return ret;
+}
+
 bool MyDB::initID(MYSQL *mysql){
     MYSQL_RES *result  = stateSQL(mysql,"SELECT Max(id) from shorturls;");//获取自增ID，存储在result中
-    if (result != nullptr && mysql_num_rows(result) == 1 && mysql_num_fields(result) == 1)
+    if (result != nullptr && (mysql_num_rows(result) == 1) && (mysql_num_fields(result) == 1))
     {
-        MYSQL_ROW row = mysql_fetch_row(result); //该方法用于获取刚刚插入数据的id,赋值给x
-        m_id = stol(row[0]);
-        return true;
+        MYSQL_ROW row; //该方法用于获取刚刚插入数据的id,赋值给x
+        if((row = mysql_fetch_row(result))){
+            if(*row==nullptr){
+                /*空表，id=null，设id=0*/
+                m_id = 0;
+                return true;
+            }
+            m_id = stol(row[0]);
+            return true;
+        }
     }
     return false;
+}
+
+long MyDB::mmhash(string longurl){
+    uint32_t seed = 0xaaaaaaaa;
+    uint32_t out;
+    MurmurHash3_x86_32(longurl.data(), longurl.size(), seed, &out);
+    return (long)out;
 }

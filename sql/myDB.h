@@ -4,6 +4,7 @@
 #include<string>
 #include<mysql/mysql.h>
 #include "../locker/locker.h"
+#include "../hash/MurmurHash3.h"
 using namespace std;
 
 /*生成短链接类*/
@@ -65,8 +66,14 @@ public:
     string insertLongUrl(MYSQL* mysql,string url);
     /*根据短链接，返回长链接*/
     string getLongUrl(MYSQL* mysql,string short_url);
+    /*通过长链接的hash值判断长链接是否已经注册
+    若已注册则返回短链接
+    若未注册，则新注册*/
+    string is_insertLongUrl(MYSQL *mysql, string longurl);
     /*初始化id*/
     bool initID(MYSQL *mysql);
+    /*将长链接hash为long*/
+    long mmhash(string longurl);
 };
 
 #endif
