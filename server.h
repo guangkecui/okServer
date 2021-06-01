@@ -3,7 +3,7 @@
 #include "./http_conn/http_conn.h"
 #include "./threadpool/threadpool.h"
 #include "./timer/timermanage.h"
-
+#include "./redis/myredis.h"
 #define READ_EVENT 0;
 #define WRITE_EVENT 1;
 const int MAX_FD = 65535;           //最大文件描述符
@@ -22,6 +22,7 @@ private:
     timerManager m_timerManger;//定时器管理器
     MyDB *m_db;//数据库操作类
     connection_pool *m_sqlpool;//数据库连接池指针
+    Redis *m_redis;//redis缓存
 
 public:
     server();

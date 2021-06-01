@@ -95,6 +95,7 @@ long ProduceSurl::power(int x,int n){
 
 MyDB::MyDB(ProduceSurl* produceurl):m_produceurl(produceurl){
     m_id = 0;
+    local_redis = nullptr;
 }
 
 MyDB::~MyDB(){
@@ -102,6 +103,7 @@ MyDB::~MyDB(){
         delete m_produceurl;
         m_produceurl = nullptr;
     }
+    local_redis = nullptr;
 }
 
 MyDB* MyDB::getInstance(ProduceSurl* produceurl){
@@ -120,6 +122,13 @@ bool MyDB::initDB(MYSQL* mysql,string host, string user, string pwd, string db_n
     }  
     return true; 
 }
+
+void MyDB::initRedis(Redis *redis){
+    if(redis!=nullptr){
+        local_redis = redis;
+    }
+}
+
 
 MYSQL_RES* MyDB::stateSQL(MYSQL* mysql,string sql){
     MYSQL_RES *result = nullptr;
@@ -248,4 +257,13 @@ long MyDB::mmhash(string longurl){
     uint32_t out;
     MurmurHash3_x86_32(longurl.data(), longurl.size(), seed, &out);
     return (long)out;
+}
+
+/*从缓存中获取长链接*/
+string MyDB::getCache(string shorturl){
+    return local_redis->get(shorturl);
+}
+/*插入缓存*/
+bool MyDB::insertCache(string shorturl, string longurl){
+    return local_redis->set(shorturl, longurl);
 }

@@ -274,15 +274,17 @@ http_conn::REQUEST_RESULT http_conn::do_request(){
             /*调用db操作类，注册长链接，返回短链接*/
             string shorturl_buff = operateDB->is_insertLongUrl(mysql, m_long_url);
             if(shorturl_buff==""){
-                cout << m_long_url<<",长链接未注册" << endl;
+                cout << "MySQL: "<<m_long_url<<",长链接未注册" << endl;
                 m_short_url = operateDB->insertLongUrl(mysql, m_long_url);
             }
             else{
-                cout << m_long_url<<",长链接已注册" << endl;
+                cout <<"MySQL: "<< m_long_url<<",长链接已注册" << endl;
                 m_short_url = shorturl_buff;
             }
             if(m_short_url!=""){
-                return REGISTERED_SU_REQUEST;//注册成功
+                //注册到缓存中
+                operateDB->insertCache(m_short_url, m_long_url);
+                return REGISTERED_SU_REQUEST; //注册成功
             }
             return BAD_REQUEST;
         }
@@ -468,16 +470,24 @@ bool http_conn::process_write(http_conn::REQUEST_RESULT ret){
         if(!add_body(readysend.data())){
             return false;
         }
-        cout << "注册短链接->长链接：" << m_long_url << " ->短链接：" << m_short_url << endl;
+        //cout << "注册短链接->长链接：" << m_long_url << " ->短链接：" << m_short_url << endl;
         break;
     }
     case REDIRECT_REQUEST:
     {
-        m_long_url = operateDB->getLongUrl(mysql, m_short_url);
+        //先从缓存中取
+        m_long_url = operateDB->getCache(m_short_url);
+        if(m_long_url==""){
+            //从数据库中取
+            m_long_url = operateDB->getLongUrl(mysql, m_short_url);
+            cout << "MySQL: "
+                 << "获取长链接 = " << m_long_url << endl;
+            operateDB->insertCache(m_short_url, m_long_url);
+        }
         m_keep_alive = false;
         add_status_line(302, redirect_302_title);
         string rederect_address = "http://" + m_long_url;
-        cout << "获取长链接->短链接：" << m_short_url << " ->长链接：" << rederect_address << endl;
+        //cout << "获取长链接->短链接：" << m_short_url << " ->长链接：" << rederect_address << endl;
         add_header(0, rederect_address);
         break;
     }

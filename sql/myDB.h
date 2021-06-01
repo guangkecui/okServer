@@ -5,6 +5,7 @@
 #include<mysql/mysql.h>
 #include "../locker/locker.h"
 #include "../hash/MurmurHash3.h"
+#include "../redis/myredis.h"
 using namespace std;
 
 /*生成短链接类*/
@@ -49,6 +50,7 @@ private:
 
     long m_id;
     locker m_lock;
+    Redis *local_redis;
 
 public:
     ProduceSurl* m_produceurl;
@@ -58,6 +60,8 @@ public:
     host:mysql的地址
     db_name:数据库名称*/
     bool initDB(MYSQL* mysql,string host, string user, string pwd, string db_name);
+    /*初始化redis操作类指针*/
+    void initRedis(Redis *redis);
     /*执行sql语句*/
     MYSQL_RES* stateSQL(MYSQL* mysql,string sql);
     /*获取最新的主键id*/
@@ -74,6 +78,10 @@ public:
     bool initID(MYSQL *mysql);
     /*将长链接hash为long*/
     long mmhash(string longurl);
+    /*从缓存中获取长链接*/
+    string getCache(string shorturl);
+    /*插入缓存*/
+    bool insertCache(string shorturl, string longurl);
 };
 
 #endif
