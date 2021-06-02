@@ -49,3 +49,73 @@
 └── webbench-1.5        压测软件
 
 ```
+# 项目配置
+1. Mysql建表
+```SQL
+// 建立myserver库
+create database myserver;
+
+// 创建user表
+USE myserver;
+CREATE TABLE shorturls(
+    id int(11) NOT NULL,
+    short_url varchar(255) not null,
+    url varchar(255) not null,
+    creat_time datetime not null,
+    lastModfication_time datetime not null,
+    urlhash bigint(20) not null,
+    PRIMARY KEY (`id`),
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+// 添加唯一索引
+ALTER TABLE shorturls ADD UNIQUE (urlhash);
+  ```
+2. 安装redis
+
+安装redis
+
+```sudo apt-get install redis-server```
+
+安装hiredis
+```
+1.git clone https://github.com/redis/hiredis.git
+
+2.cd hiredis
+
+3.make
+
+4.make install
+
+5.sudo ldconfig (更新动态库配置文件)
+```
+3. 运行
+
+```
+make
+
+./main
+```
+# 效果展示
+
+### 压测结果
+此压测结果只是单纯web服务器的压测结果
+![](img/6000.png)
+
+![](img/9000.png)
+
+### 运行图
+![](img/1.PNG)
+
+![](img/2.PNG)
+
+![](img/3.PNG)
+
+![](img/4.PNG)
+
+![](img/5.PNG)
+
+![](img/6.PNG)
+
+### mysql
+
+![](img/7.PNG)
