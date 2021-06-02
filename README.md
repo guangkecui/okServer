@@ -15,63 +15,37 @@
   3. Redis 4.0.9
   4. murmurhash3
 # 目录树
-'''
+```
 .
-├── hash
-│   ├── MurmurHash3.cpp
+├── hash                  默默哈希
+│   ├── MurmurHash3.cpp
 │   └── MurmurHash3.h
-├── http_conn
-│   ├── http_conn.cpp
+├── http_conn             http类
+│   ├── http_conn.cpp
 │   └── http_conn.h
 ├── locker
 │   ├── locker.cpp
 │   └── locker.h
-├── main
-├── main.cpp
+├── main                
+├── main.cpp             主函数
 ├── Makefile
-├── redis
-│   ├── myredis.cpp
+├── redis                redis操作类
+│   ├── myredis.cpp
 │   └── myredis.h
 ├── server.cpp
 ├── server.h
-├── server_root
-│   ├── css
-│   │   └── normalize.css
-│   ├── favicon.ico
-│   ├── homepage.html
-│   ├── loginfailed.html
-│   ├── picture.html
-│   ├── registerFailed.html
-│   ├── register.html
-│   ├── registerSuccess.html
-│   ├── video.html
-│   └── welcome.html
+├── server_root         资源文件
 ├── sql
 │   ├── myDB.cpp
 │   ├── myDB.h
 │   ├── sqlpool.cpp
 │   └── sqlpool.h
-├── threadpool
-│   ├── threadpool.cpp
+├── threadpool          线程池类
+│   ├── threadpool.cpp
 │   └── threadpool.h
-├── timer
-│   ├── timermanage.cpp
+├── timer               时间管理类
+│   ├── timermanage.cpp
 │   └── timermanage.h
-└── webbench-1.5
-    ├── ChangeLog
-    ├── COPYRIGHT
-    ├── debian
-    │   ├── changelog
-    │   ├── control
-    │   ├── copyright
-    │   ├── dirs
-    │   └── rules
-    ├── Makefile
-    ├── socket.c
-    ├── tags
-    ├── webbench
-    ├── webbench.1
-    ├── webbench.c
-    └── webbench.o
+└── webbench-1.5        压测软件
 
-'''
+```
